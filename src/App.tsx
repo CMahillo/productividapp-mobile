@@ -69,15 +69,18 @@ export default function App() {
     </div>
   )
 
-  if (state === 'auth-error') return (
-    <div className="screen-center">
-      <p style={{ color: '#f87171', marginBottom: 8 }}>Error de autenticación</p>
-      <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 16 }}>No se pudo completar el inicio de sesión</p>
-      <button className="btn-secondary" onClick={() => { logout(); setState('login') }}>
-        Intentar de nuevo
-      </button>
-    </div>
-  )
+  if (state === 'auth-error') {
+    const debug = localStorage.getItem('auth_last_error') ?? 'sin detalle'
+    return (
+      <div className="screen-center" style={{ gap: 12 }}>
+        <p style={{ color: '#f87171' }}>Error de autenticación</p>
+        <pre style={{ color: '#9ca3af', fontSize: 11, background: '#1f2937', padding: 12, borderRadius: 8, maxWidth: '90vw', whiteSpace: 'pre-wrap', wordBreak: 'break-all', textAlign: 'left' }}>{debug}</pre>
+        <button className="btn-secondary" onClick={() => { logout(); setState('login') }}>
+          Intentar de nuevo
+        </button>
+      </div>
+    )
+  }
 
   if (state === 'drive-error') return (
     <div className="screen-center">

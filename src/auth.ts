@@ -72,14 +72,25 @@ export async function startAuth(): Promise<void> {
 export async function handleCallback(): Promise<boolean> {
   const code = new URLSearchParams(window.location.search).get('code')
   const verifier = localStorage.getItem('pkce_v')
-  if (!code || !verifier) { console.error('[auth] Missing code or verifier', { code: !!code, verifier: !!verifier }); return false }
+  if (!code || !verifier) {
+    const debug = { step: 'check', had_code: !!code, had_verifier: !!verifier }
+    console.error('[auth] Missing code or verifier', debug)
+    localStorage.setItem('auth_last_error', JSON.stringify(debug))
+    return false
+  }
 
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, grant_type: 'authorization_code', code, code_verifier: verifier })
   })
-  if (!res.ok) return false
+  if (!res.ok) {
+    const body = await res.text()
+    const debug = { step: 'token_exchange', status: res.status, body, redirect_uri: REDIRECT_URI, had_verifier: !!verifier }
+    console.error('[auth] Token exchange failed', debug)
+    localStorage.setItem('auth_last_error', JSON.stringify(debug))
+    return false
+  }
 
   const data = await res.json() as { access_token: string; refresh_token: string; expires_in: number }
   saveTokens({ access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Date.now() + data.expires_in * 1000 })
