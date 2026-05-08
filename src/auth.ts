@@ -1,4 +1,5 @@
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
+const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string
 const REDIRECT_URI = 'https://cmahillo.github.io/productividapp-mobile/'
 // drive scope allows reading files regardless of which app created them
 const SCOPE = 'https://www.googleapis.com/auth/drive'
@@ -44,7 +45,7 @@ async function refreshAccessToken(refreshToken: string): Promise<string | null> 
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: CLIENT_ID, grant_type: 'refresh_token', refresh_token: refreshToken })
+    body: new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: 'refresh_token', refresh_token: refreshToken })
   })
   if (!res.ok) { localStorage.removeItem('g_tokens'); return null }
   const data = await res.json() as { access_token: string; expires_in: number }
@@ -82,7 +83,7 @@ export async function handleCallback(): Promise<boolean> {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, grant_type: 'authorization_code', code, code_verifier: verifier })
+    body: new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, redirect_uri: REDIRECT_URI, grant_type: 'authorization_code', code, code_verifier: verifier })
   })
   if (!res.ok) {
     const body = await res.text()
