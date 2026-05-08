@@ -1,0 +1,19 @@
+{
+  "name": "ProductividApp · Notas",
+  "short_name": "Notas",
+  "description": "Tus notas del escritorio, en el móvil",
+  "start_url": "/productividapp-mobile/",
+  "scope": "/productividapp-mobile/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
