@@ -55,7 +55,7 @@ async function refreshAccessToken(refreshToken: string): Promise<string | null> 
 
 export async function startAuth(): Promise<void> {
   const { verifier, challenge } = await generatePKCE()
-  sessionStorage.setItem('pkce_v', verifier)
+  localStorage.setItem('pkce_v', verifier)  // sessionStorage se pierde al redirigir en móvil
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
@@ -71,8 +71,8 @@ export async function startAuth(): Promise<void> {
 
 export async function handleCallback(): Promise<boolean> {
   const code = new URLSearchParams(window.location.search).get('code')
-  const verifier = sessionStorage.getItem('pkce_v')
-  if (!code || !verifier) return false
+  const verifier = localStorage.getItem('pkce_v')
+  if (!code || !verifier) { console.error('[auth] Missing code or verifier', { code: !!code, verifier: !!verifier }); return false }
 
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -83,7 +83,7 @@ export async function handleCallback(): Promise<boolean> {
 
   const data = await res.json() as { access_token: string; refresh_token: string; expires_in: number }
   saveTokens({ access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Date.now() + data.expires_in * 1000 })
-  sessionStorage.removeItem('pkce_v')
+  localStorage.removeItem('pkce_v')
   window.history.replaceState({}, '', window.location.pathname)
   return true
 }

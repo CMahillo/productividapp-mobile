@@ -4,7 +4,7 @@ import { readNotes, writeNotes } from './drive'
 import type { Note } from './types'
 import NoteList from './components/NoteList'
 
-type AppState = 'loading' | 'login' | 'ready' | 'error'
+type AppState = 'loading' | 'login' | 'ready' | 'auth-error' | 'drive-error'
 
 export default function App() {
   const [state, setState] = useState<AppState>('loading')
@@ -15,7 +15,7 @@ export default function App() {
     async function init() {
       if (window.location.search.includes('code=')) {
         const ok = await handleCallback()
-        if (!ok) { setState('error'); return }
+        if (!ok) { setState('auth-error'); return }
       }
       if (!isAuthenticated()) { setState('login'); return }
       await loadNotes()
@@ -27,11 +27,12 @@ export default function App() {
     setSyncing(true)
     try {
       const data = await readNotes()
-      if (data === null) { setState('error'); return }
+      if (data === null) { setState('drive-error'); return }
       setNotes(data)
       setState('ready')
-    } catch {
-      setState('error')
+    } catch (e) {
+      console.error('[drive]', e)
+      setState('drive-error')
     } finally {
       setSyncing(false)
     }
@@ -68,9 +69,20 @@ export default function App() {
     </div>
   )
 
-  if (state === 'error') return (
+  if (state === 'auth-error') return (
     <div className="screen-center">
-      <p style={{ color: '#f87171', marginBottom: 16 }}>Error al conectar con Google Drive</p>
+      <p style={{ color: '#f87171', marginBottom: 8 }}>Error de autenticación</p>
+      <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 16 }}>No se pudo completar el inicio de sesión</p>
+      <button className="btn-secondary" onClick={() => { logout(); setState('login') }}>
+        Intentar de nuevo
+      </button>
+    </div>
+  )
+
+  if (state === 'drive-error') return (
+    <div className="screen-center">
+      <p style={{ color: '#f87171', marginBottom: 8 }}>Error al acceder a Google Drive</p>
+      <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 16 }}>Comprueba que la app tiene permiso de Drive</p>
       <button className="btn-secondary" onClick={() => { logout(); setState('login') }}>
         Volver al inicio
       </button>
