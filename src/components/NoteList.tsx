@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import type { Note } from '../types'
 import NoteCard from './NoteCard'
+import NoteDetail from './NoteDetail'
 import NoteEditor from './NoteEditor'
+import CalendarView from './CalendarView'
+
+type Tab = 'notes' | 'calendar'
 
 interface Props {
   notes: Note[]
@@ -12,8 +16,10 @@ interface Props {
 }
 
 export default function NoteList({ notes, syncing, onSave, onSync, onLogout }: Props) {
-  const [editing, setEditing] = useState<Note | 'new' | null>(null)
+  const [tab, setTab] = useState<Tab>('notes')
   const [query, setQuery] = useState('')
+  const [detail, setDetail] = useState<Note | null>(null)
+  const [editing, setEditing] = useState<Note | 'new' | null>(null)
 
   const visible = notes
     .filter(n => !n.hidden)
@@ -24,55 +30,97 @@ export default function NoteList({ notes, syncing, onSave, onSync, onLogout }: P
     const idx = notes.findIndex(n => n.id === note.id)
     onSave(idx >= 0 ? notes.map((n, i) => (i === idx ? note : n)) : [...notes, note])
     setEditing(null)
+    // Update detail if open
+    if (detail?.id === note.id) setDetail(note)
   }
 
   const handleDelete = (id: string) => {
-    if (!window.confirm('¿Eliminar esta nota?')) return
     onSave(notes.filter(n => n.id !== id))
+    setDetail(null)
   }
 
   const handleToggle = (id: string, content: string) => {
-    onSave(notes.map(n => (n.id === id ? { ...n, content } : n)))
+    const updated = notes.map(n => (n.id === id ? { ...n, content } : n))
+    onSave(updated)
+    const updatedNote = updated.find(n => n.id === id) ?? null
+    setDetail(updatedNote)
+  }
+
+  const openEdit = (note: Note) => {
+    setDetail(null)
+    setEditing(note)
   }
 
   return (
     <div className="app">
+      {/* Header */}
       <header className="topbar">
-        <span className="topbar-title">📌 Notas</span>
+        <span className="topbar-title">{tab === 'notes' ? '📌 Notas' : '📅 Calendario'}</span>
         <div className="topbar-actions">
-          <button className="icon-btn" onClick={onSync} disabled={syncing} title="Sincronizar">
-            {syncing ? <span className="spinner-sm" /> : '↻'}
-          </button>
-          <button className="icon-btn add-btn" onClick={() => setEditing('new')} title="Nueva nota">+</button>
+          {tab === 'notes' && (
+            <>
+              <button className="icon-btn" onClick={onSync} disabled={syncing} title="Sincronizar">
+                {syncing ? <span className="spinner-sm" /> : '↻'}
+              </button>
+              <button className="icon-btn add-btn" onClick={() => setEditing('new')} title="Nueva nota">+</button>
+            </>
+          )}
           <button className="icon-btn" onClick={onLogout} title="Cerrar sesión" style={{ fontSize: 14 }}>⏏</button>
         </div>
       </header>
 
-      <div className="search-wrap">
-        <input
-          className="search-input"
-          type="search"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder="Buscar notas..."
+      {/* Content */}
+      {tab === 'notes' ? (
+        <>
+          <div className="search-wrap">
+            <input
+              className="search-input"
+              type="search"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Buscar notas..."
+            />
+          </div>
+          <div className="notes-list">
+            {visible.length === 0 && (
+              <p className="empty-msg">{query ? 'Sin resultados' : 'No hay notas. Pulsa + para crear una.'}</p>
+            )}
+            {visible.map(note => (
+              <NoteCard key={note.id} note={note} onTap={() => setDetail(note)} />
+            ))}
+          </div>
+        </>
+      ) : (
+        <CalendarView
+          notes={notes}
+          onNoteSelect={setDetail}
         />
-      </div>
+      )}
 
-      <div className="notes-list">
-        {visible.length === 0 && (
-          <p className="empty-msg">{query ? 'Sin resultados' : 'No hay notas. Pulsa + para crear una.'}</p>
-        )}
-        {visible.map(note => (
-          <NoteCard
-            key={note.id}
-            note={note}
-            onEdit={() => setEditing(note)}
-            onDelete={() => handleDelete(note.id)}
-            onToggle={content => handleToggle(note.id, content)}
-          />
-        ))}
-      </div>
+      {/* Bottom tabs */}
+      <nav className="tab-bar">
+        <button className={`tab-btn ${tab === 'notes' ? 'active' : ''}`} onClick={() => setTab('notes')}>
+          <span className="tab-icon">📌</span>
+          <span className="tab-label">Notas</span>
+        </button>
+        <button className={`tab-btn ${tab === 'calendar' ? 'active' : ''}`} onClick={() => setTab('calendar')}>
+          <span className="tab-icon">📅</span>
+          <span className="tab-label">Calendario</span>
+        </button>
+      </nav>
 
+      {/* Note detail */}
+      {detail && (
+        <NoteDetail
+          note={detail}
+          onEdit={() => openEdit(detail)}
+          onDelete={() => handleDelete(detail.id)}
+          onToggle={content => handleToggle(detail.id, content)}
+          onClose={() => setDetail(null)}
+        />
+      )}
+
+      {/* Note editor */}
       {editing !== null && (
         <NoteEditor
           note={editing === 'new' ? null : editing}
