@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { isAuthenticated, handleCallback, startAuth, logout } from './auth'
 import { readNotes, writeNotes } from './drive'
+import { requestNotificationPermission, scheduleNotifications } from './notifications'
 import type { Note } from './types'
 import NoteList from './components/NoteList'
 
@@ -30,6 +31,7 @@ export default function App() {
       if (data === null) { setState('drive-error'); return }
       setNotes(data)
       setState('ready')
+      requestNotificationPermission().then(ok => { if (ok) scheduleNotifications(data) })
     } catch (e) {
       console.error('[drive]', e)
       setState('drive-error')
@@ -40,6 +42,7 @@ export default function App() {
 
   async function saveNotes(updated: Note[]) {
     setNotes(updated)
+    scheduleNotifications(updated)
     await writeNotes(updated)
   }
 
