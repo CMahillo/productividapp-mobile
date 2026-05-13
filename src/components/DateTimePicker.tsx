@@ -54,6 +54,17 @@ export default function DateTimePicker({ value, onChange, onClose }: Props) {
       <div className="dtp-sheet" onClick={e => e.stopPropagation()}>
         <div className="editor-handle" />
 
+        {/* Fechas rápidas */}
+        <div className="dtp-quick">
+          {[
+            { label: '⏰ Más tarde hoy', getDt: () => { const d = new Date(); d.setHours(d.getHours() + 4); return d } },
+            { label: '🌅 Mañana 9:00', getDt: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d } },
+            { label: '📆 Lunes próximo 9:00', getDt: () => { const d = new Date(); const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? 1 : day === 1 ? 7 : 8 - day)); d.setHours(9, 0, 0, 0); return d } },
+          ].map(({ label, getDt }) => (
+            <button key={label} className="dtp-quick-btn" onClick={() => { onChange(getDt().toISOString()); onClose() }}>{label}</button>
+          ))}
+        </div>
+
         {/* Month navigation */}
         <div className="dtp-nav">
           <button className="icon-btn" onClick={() => setView(new Date(year, month - 1, 1))}>‹</button>

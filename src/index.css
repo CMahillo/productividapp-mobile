@@ -750,3 +750,7 @@ body {
 .dtp-min-btn.selected { background: var(--accent); color: #fff; }
 
 .dtp-actions { display: flex; gap: 8px; align-items: center; padding-bottom: 4px; }
+
+.dtp-quick { display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.dtp-quick-btn { background: var(--surface2); border: none; border-radius: 10px; padding: 10px 14px; text-align: left; font-size: 14px; color: var(--text); cursor: pointer; }
+.dtp-quick-btn:active { background: var(--accent); color: #fff; }
