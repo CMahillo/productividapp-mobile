@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { isAuthenticated, handleCallback, startAuth, logout } from './auth'
-import { readNotes, writeNotes } from './drive'
+import { readNotes, writeNotes, readQuickItems } from './drive'
 import { requestNotificationPermission, scheduleNotifications } from './notifications'
-import type { Note } from './types'
+import type { Note, QuickItem } from './types'
 import NoteList from './components/NoteList'
 
 type AppState = 'loading' | 'login' | 'ready' | 'auth-error' | 'drive-error'
@@ -10,6 +10,7 @@ type AppState = 'loading' | 'login' | 'ready' | 'auth-error' | 'drive-error'
 export default function App() {
   const [state, setState] = useState<AppState>('loading')
   const [notes, setNotes] = useState<Note[]>([])
+  const [quickItems, setQuickItems] = useState<QuickItem[]>([])
   const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
@@ -27,9 +28,10 @@ export default function App() {
   async function loadNotes() {
     setSyncing(true)
     try {
-      const data = await readNotes()
+      const [data, qItems] = await Promise.all([readNotes(), readQuickItems()])
       if (data === null) { setState('drive-error'); return }
       setNotes(data)
+      setQuickItems(qItems ?? [])
       setState('ready')
       requestNotificationPermission().then(ok => { if (ok) scheduleNotifications(data) })
     } catch (e) {
@@ -98,6 +100,7 @@ export default function App() {
   return (
     <NoteList
       notes={notes}
+      quickItems={quickItems}
       syncing={syncing}
       onSave={saveNotes}
       onSync={loadNotes}

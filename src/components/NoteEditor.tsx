@@ -9,21 +9,21 @@ const COLORS = [
 
 interface Props {
   note: Note | null
+  labels: string[]
   onSave: (note: Note) => void
   onClose: () => void
 }
 
-export default function NoteEditor({ note, onSave, onClose }: Props) {
+export default function NoteEditor({ note, labels, onSave, onClose }: Props) {
   const [color, setColor] = useState(note?.color ?? '#fef9c3')
   const [dueDate, setDueDate] = useState<string | undefined>(note?.dueDate)
+  const [label, setLabel] = useState<string | undefined>(note?.label)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
 
-  // Initialise contenteditable with existing HTML
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.innerHTML = note?.content ?? ''
-      // Place cursor at end
       const range = document.createRange()
       const sel = window.getSelection()
       range.selectNodeContents(editorRef.current)
@@ -39,9 +39,44 @@ export default function NoteEditor({ note, onSave, onClose }: Props) {
     document.execCommand(cmd, false, value)
   }
 
-  const insertCheckbox = () => {
-    editorRef.current?.focus()
-    document.execCommand('insertHTML', false, '<span class="note-cb" style="cursor:pointer;user-select:none" contenteditable="false">☐</span> ')
+  const toggleCheckbox = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    const sel = window.getSelection()
+    let anchor: Node | null = sel?.focusNode ?? null
+    while (anchor && anchor.parentNode !== editor) anchor = anchor.parentNode
+    let prev: Node | null = anchor ? anchor.previousSibling : null
+    while (prev && prev.nodeName !== 'BR') prev = prev.previousSibling
+    const lineStart: Node | null = prev ? prev.nextSibling : editor.firstChild
+    if (
+      lineStart?.nodeType === Node.ELEMENT_NODE &&
+      (lineStart as Element).classList.contains('note-cb')
+    ) {
+      const next = lineStart.nextSibling
+      editor.removeChild(lineStart)
+      if (next?.nodeType === Node.TEXT_NODE) {
+        const t = next as Text
+        if (t.data.startsWith(' ')) {
+          if (t.data.length === 1) editor.removeChild(t)
+          else t.data = t.data.slice(1)
+        }
+      }
+    } else {
+      const cbSpan = document.createElement('span')
+      cbSpan.className = 'note-cb'
+      cbSpan.setAttribute('style', 'cursor:pointer;user-select:none')
+      cbSpan.setAttribute('contenteditable', 'false')
+      cbSpan.textContent = '☐'
+      const space = document.createTextNode(' ')
+      if (lineStart && lineStart.parentNode === editor) {
+        editor.insertBefore(cbSpan, lineStart)
+        editor.insertBefore(space, lineStart)
+      } else {
+        editor.appendChild(cbSpan)
+        editor.appendChild(space)
+      }
+    }
   }
 
   const formatDate = (iso: string) => {
@@ -52,12 +87,12 @@ export default function NoteEditor({ note, onSave, onClose }: Props) {
   }
 
   const handleSave = () => {
-    const content = editorRef.current?.innerHTML ?? ''
+    const content = (editorRef.current?.innerHTML ?? '').replace(/&amp;nbsp;/g, ' ').replace(/&nbsp;/g, ' ')
     if (!content.trim() && !note) { onClose(); return }
     const now = new Date().toISOString()
     const saved: Note = note
-      ? { ...note, content, color, dueDate }
-      : { id: crypto.randomUUID(), content, x: 100, y: 100, width: 220, height: 190, color, dueDate, createdAt: now, fontSize: 13 }
+      ? { ...note, content, color, dueDate, label }
+      : { id: crypto.randomUUID(), content, x: 100, y: 100, width: 220, height: 190, color, dueDate, label, createdAt: now, fontSize: 13 }
     onSave(saved)
   }
 
@@ -77,7 +112,7 @@ export default function NoteEditor({ note, onSave, onClose }: Props) {
             <button className="fmt-btn" onMouseDown={e => { e.preventDefault(); exec('italic') }} title="Cursiva"><i>I</i></button>
             <button className="fmt-btn" onMouseDown={e => { e.preventDefault(); exec('underline') }} title="Subrayado"><u>U</u></button>
             <div className="fmt-sep" />
-            <button className="fmt-btn" onMouseDown={e => { e.preventDefault(); insertCheckbox() }} title="Casilla">☐</button>
+            <button className="fmt-btn" onMouseDown={e => { e.preventDefault(); toggleCheckbox() }} title="Casilla">☐</button>
             <div className="fmt-sep" />
             <button className="fmt-btn" onMouseDown={e => { e.preventDefault(); exec('removeFormat') }} title="Quitar formato">✕</button>
           </div>
@@ -89,6 +124,35 @@ export default function NoteEditor({ note, onSave, onClose }: Props) {
             contentEditable
             suppressContentEditableWarning
             data-placeholder="Escribe tu nota..."
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && editorRef.current) {
+                e.preventDefault()
+                const sel = window.getSelection()
+                if (sel && sel.rangeCount > 0) {
+                  let node: Node | null = sel.getRangeAt(0).startContainer
+                  while (node && node !== editorRef.current && node.parentNode !== editorRef.current) {
+                    node = node.parentNode
+                  }
+                  let lineFirst: Node | null = null
+                  if (node && node !== editorRef.current) {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                      lineFirst = (node as Element).firstChild
+                    } else {
+                      let prev: Node | null = node.previousSibling
+                      while (prev && prev.nodeName !== 'BR') prev = prev.previousSibling
+                      lineFirst = prev ? prev.nextSibling : editorRef.current.firstChild
+                    }
+                  }
+                  if (lineFirst?.nodeType === Node.ELEMENT_NODE && (lineFirst as Element).classList?.contains('note-cb')) {
+                    document.execCommand('insertHTML', false, '<br><span class="note-cb" style="cursor:pointer;user-select:none" contenteditable="false">☐</span> ')
+                  } else {
+                    document.execCommand('insertLineBreak')
+                  }
+                } else {
+                  document.execCommand('insertLineBreak')
+                }
+              }
+            }}
           />
 
           {/* Color picker */}
@@ -97,6 +161,23 @@ export default function NoteEditor({ note, onSave, onClose }: Props) {
               <button key={c} className={`color-dot ${c === color ? 'selected' : ''}`} style={{ background: c }} onClick={() => setColor(c)} />
             ))}
           </div>
+
+          {/* Label selector */}
+          {labels.length > 0 && (
+            <div className="label-row">
+              <button
+                className={`label-chip ${!label ? 'active' : ''}`}
+                onClick={() => setLabel(undefined)}
+              >Sin etiqueta</button>
+              {labels.map(l => (
+                <button
+                  key={l}
+                  className={`label-chip ${label === l ? 'active' : ''}`}
+                  onClick={() => setLabel(label === l ? undefined : l)}
+                >{l}</button>
+              ))}
+            </div>
+          )}
 
           {/* Date */}
           <button className="dtp-trigger" onClick={() => setShowDatePicker(true)}>

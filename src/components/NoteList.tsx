@@ -1,25 +1,32 @@
-import { useState } from 'react'
-import type { Note } from '../types'
+import { useState, useMemo } from 'react'
+import type { Note, QuickItem } from '../types'
 import NoteCard from './NoteCard'
 import NoteDetail from './NoteDetail'
 import NoteEditor from './NoteEditor'
 import CalendarView from './CalendarView'
+import QuickPanelView from './QuickPanelView'
 
-type Tab = 'notes' | 'calendar'
+type Tab = 'notes' | 'calendar' | 'quick'
 
 interface Props {
   notes: Note[]
+  quickItems: QuickItem[]
   syncing: boolean
   onSave: (notes: Note[]) => void
   onSync: () => void
   onLogout: () => void
 }
 
-export default function NoteList({ notes, syncing, onSave, onSync, onLogout }: Props) {
+export default function NoteList({ notes, quickItems, syncing, onSave, onSync, onLogout }: Props) {
   const [tab, setTab] = useState<Tab>('notes')
   const [query, setQuery] = useState('')
   const [detail, setDetail] = useState<Note | null>(null)
   const [editing, setEditing] = useState<Note | 'new' | null>(null)
+
+  const availableLabels = useMemo(
+    () => [...new Set(notes.map(n => n.label).filter((l): l is string => !!l))],
+    [notes]
+  )
 
   const visible = notes
     .filter(n => !n.hidden)
@@ -30,7 +37,6 @@ export default function NoteList({ notes, syncing, onSave, onSync, onLogout }: P
     const idx = notes.findIndex(n => n.id === note.id)
     onSave(idx >= 0 ? notes.map((n, i) => (i === idx ? note : n)) : [...notes, note])
     setEditing(null)
-    // Update detail if open
     if (detail?.id === note.id) setDetail(note)
   }
 
@@ -55,7 +61,9 @@ export default function NoteList({ notes, syncing, onSave, onSync, onLogout }: P
     <div className="app">
       {/* Header */}
       <header className="topbar">
-        <span className="topbar-title">{tab === 'notes' ? '📌 Notas' : '📅 Calendario'}</span>
+        <span className="topbar-title">
+          {tab === 'notes' ? '📌 Notas' : tab === 'calendar' ? '📅 Calendario' : '⚡ Rápido'}
+        </span>
         <div className="topbar-actions">
           {tab === 'notes' && (
             <>
@@ -90,11 +98,13 @@ export default function NoteList({ notes, syncing, onSave, onSync, onLogout }: P
             ))}
           </div>
         </>
-      ) : (
+      ) : tab === 'calendar' ? (
         <CalendarView
           notes={notes}
           onNoteSelect={setDetail}
         />
+      ) : (
+        <QuickPanelView items={quickItems} />
       )}
 
       {/* Bottom tabs */}
@@ -106,6 +116,10 @@ export default function NoteList({ notes, syncing, onSave, onSync, onLogout }: P
         <button className={`tab-btn ${tab === 'calendar' ? 'active' : ''}`} onClick={() => setTab('calendar')}>
           <span className="tab-icon">📅</span>
           <span className="tab-label">Calendario</span>
+        </button>
+        <button className={`tab-btn ${tab === 'quick' ? 'active' : ''}`} onClick={() => setTab('quick')}>
+          <span className="tab-icon">⚡</span>
+          <span className="tab-label">Rápido</span>
         </button>
       </nav>
 
@@ -124,6 +138,7 @@ export default function NoteList({ notes, syncing, onSave, onSync, onLogout }: P
       {editing !== null && (
         <NoteEditor
           note={editing === 'new' ? null : editing}
+          labels={availableLabels}
           onSave={handleSave}
           onClose={() => setEditing(null)}
         />
