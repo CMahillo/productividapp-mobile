@@ -18,6 +18,7 @@ export default function NoteEditor({ note, labels, onSave, onClose }: Props) {
   const [color, setColor] = useState(note?.color ?? '#fef9c3')
   const [dueDate, setDueDate] = useState<string | undefined>(note?.dueDate)
   const [label, setLabel] = useState<string | undefined>(note?.label)
+  const [newLabel, setNewLabel] = useState('')
   const [showDatePicker, setShowDatePicker] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
 
@@ -163,7 +164,7 @@ export default function NoteEditor({ note, labels, onSave, onClose }: Props) {
           </div>
 
           {/* Label selector */}
-          {labels.length > 0 && (
+          <div className="label-section">
             <div className="label-row">
               <button
                 className={`label-chip ${!label ? 'active' : ''}`}
@@ -177,7 +178,28 @@ export default function NoteEditor({ note, labels, onSave, onClose }: Props) {
                 >{l}</button>
               ))}
             </div>
-          )}
+            <div className="label-new-row">
+              <input
+                className="label-new-input"
+                type="text"
+                placeholder="Nueva etiqueta..."
+                value={newLabel}
+                onChange={e => setNewLabel(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newLabel.trim()) {
+                    setLabel(newLabel.trim())
+                    setNewLabel('')
+                  }
+                }}
+              />
+              {newLabel.trim() && (
+                <button
+                  className="label-new-btn"
+                  onClick={() => { setLabel(newLabel.trim()); setNewLabel('') }}
+                >Usar</button>
+              )}
+            </div>
+          </div>
 
           {/* Date */}
           <button className="dtp-trigger" onClick={() => setShowDatePicker(true)}>

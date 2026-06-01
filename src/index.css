@@ -756,6 +756,8 @@ body {
 .dtp-quick-btn:active { background: var(--accent); color: #fff; }
 
 /* ── Label selector ── */
+.label-section { display: flex; flex-direction: column; gap: 8px; }
+
 .label-row {
   display: flex;
   gap: 6px;
@@ -776,6 +778,36 @@ body {
 .label-chip.active {
   background: var(--accent);
   color: #fff;
+}
+
+.label-new-row {
+  display: flex;
+  gap: 6px;
+}
+
+.label-new-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: none;
+}
+.label-new-input:focus { border-color: var(--accent); }
+.label-new-input::placeholder { color: var(--text2); }
+
+.label-new-btn {
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 /* ── QuickPanel view ── */
