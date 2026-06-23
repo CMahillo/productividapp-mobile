@@ -10,14 +10,16 @@ const COLORS = [
 interface Props {
   note: Note | null
   labels: string[]
+  defaultLabel?: string
+  defaultDueDate?: string
   onSave: (note: Note) => void
   onClose: () => void
 }
 
-export default function NoteEditor({ note, labels, onSave, onClose }: Props) {
+export default function NoteEditor({ note, labels, defaultLabel, defaultDueDate, onSave, onClose }: Props) {
   const [color, setColor] = useState(note?.color ?? '#fef9c3')
-  const [dueDate, setDueDate] = useState<string | undefined>(note?.dueDate)
-  const [label, setLabel] = useState<string | undefined>(note?.label)
+  const [dueDate, setDueDate] = useState<string | undefined>(note?.dueDate ?? defaultDueDate)
+  const [label, setLabel] = useState<string | undefined>(note?.label ?? defaultLabel)
   const [newLabel, setNewLabel] = useState('')
   const [showDatePicker, setShowDatePicker] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)

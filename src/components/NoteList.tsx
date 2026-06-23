@@ -5,8 +5,9 @@ import NoteDetail from './NoteDetail'
 import NoteEditor from './NoteEditor'
 import CalendarView from './CalendarView'
 import QuickPanelView from './QuickPanelView'
+import BoardView from './BoardView'
 
-type Tab = 'notes' | 'calendar' | 'quick'
+type Tab = 'notes' | 'calendar' | 'board' | 'quick'
 
 interface Props {
   notes: Note[]
@@ -62,7 +63,7 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
       {/* Header */}
       <header className="topbar">
         <span className="topbar-title">
-          {tab === 'notes' ? '📌 Notas' : tab === 'calendar' ? '📅 Calendario' : '⚡ Rápido'}
+          {tab === 'notes' ? '📌 Notas' : tab === 'calendar' ? '📅 Calendario' : tab === 'board' ? '🗂 Tablero' : '⚡ Rápido'}
         </span>
         <div className="topbar-actions">
           {tab === 'notes' && (
@@ -103,6 +104,8 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
           notes={notes}
           onNoteSelect={setDetail}
         />
+      ) : tab === 'board' ? (
+        <BoardView notes={notes} onSave={onSave} />
       ) : (
         <QuickPanelView items={quickItems} />
       )}
@@ -116,6 +119,10 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
         <button className={`tab-btn ${tab === 'calendar' ? 'active' : ''}`} onClick={() => setTab('calendar')}>
           <span className="tab-icon">📅</span>
           <span className="tab-label">Calendario</span>
+        </button>
+        <button className={`tab-btn ${tab === 'board' ? 'active' : ''}`} onClick={() => setTab('board')}>
+          <span className="tab-icon">🗂</span>
+          <span className="tab-label">Tablero</span>
         </button>
         <button className={`tab-btn ${tab === 'quick' ? 'active' : ''}`} onClick={() => setTab('quick')}>
           <span className="tab-icon">⚡</span>
