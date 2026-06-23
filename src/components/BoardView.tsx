@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import {
   DndContext,
   DragEndEvent,
@@ -62,13 +62,16 @@ function buildLabelColumns(notes: Note[]): Column[] {
     canAdd: true,
     defaultLabel: l
   }))
-  cols.push({
-    id: 'label:__none',
-    label: 'Sin etiqueta',
-    notes: notes.filter(n => !n.hidden && !n.label),
-    canDrop: true,
-    canAdd: true
-  })
+  const unlabeled = notes.filter(n => !n.hidden && !n.label)
+  if (unlabeled.length > 0) {
+    cols.push({
+      id: 'label:__none',
+      label: 'Sin etiqueta',
+      notes: unlabeled,
+      canDrop: true,
+      canAdd: true
+    })
+  }
   return cols
 }
 
@@ -79,7 +82,7 @@ function buildDateColumns(notes: Note[]): Column[] {
   const weekEnd = new Date(todayEnd); weekEnd.setDate(weekEnd.getDate() + 6)
   const visible = notes.filter(n => !n.hidden)
 
-  return [
+  const cols: Column[] = [
     {
       id: '_overdue',
       label: '⚠️ Vencidas',
@@ -119,10 +122,53 @@ function buildDateColumns(notes: Note[]): Column[] {
       canAdd: true
     }
   ]
+  return cols.filter(c => c.notes.length > 0)
 }
 
-function BoardNoteCard({ note, onTap }: { note: Note; onTap: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: note.id })
+function BoardNoteCard({ note, onTap, onDelete }: { note: Note; onTap: () => void; onDelete: () => void }) {
+  const [showMenu, setShowMenu] = useState(false)
+  const longTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pointerPos = useRef<{ x: number; y: number } | null>(null)
+  const didLongPress = useRef(false)
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: note.id,
+    disabled: showMenu
+  })
+
+  const cancelLongPress = () => {
+    if (longTimer.current) { clearTimeout(longTimer.current); longTimer.current = null }
+  }
+
+  const { onPointerDown: dndPointerDown, ...restListeners } = (listeners ?? {}) as {
+    onPointerDown?: React.PointerEventHandler<HTMLDivElement>
+    [key: string]: unknown
+  }
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    didLongPress.current = false
+    pointerPos.current = { x: e.clientX, y: e.clientY }
+    longTimer.current = setTimeout(() => {
+      didLongPress.current = true
+      setShowMenu(true)
+    }, 500)
+    dndPointerDown?.(e)
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (pointerPos.current && longTimer.current) {
+      const dx = Math.abs(e.clientX - pointerPos.current.x)
+      const dy = Math.abs(e.clientY - pointerPos.current.y)
+      if (dx > 8 || dy > 8) cancelLongPress()
+    }
+  }
+
+  const handleClick = () => {
+    if (didLongPress.current) { didLongPress.current = false; return }
+    onTap()
+  }
+
+  const text = stripHtml(note.content)
 
   const style: React.CSSProperties = {
     background: note.color,
@@ -132,32 +178,67 @@ function BoardNoteCard({ note, onTap }: { note: Note; onTap: () => void }) {
       : {})
   }
 
-  const text = stripHtml(note.content)
-
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`board-note${isDragging ? ' dragging' : ''}`}
-      {...listeners}
-      {...attributes}
-      onClick={onTap}
-    >
-      <div className="board-note-text">{text || 'Nota vacía'}</div>
-      {note.dueDate && <div className="board-note-date">🗓 {formatDate(note.dueDate)}</div>}
-      {note.label && <div className="board-note-chip">{note.label}</div>}
-    </div>
+    <>
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`board-note${isDragging ? ' dragging' : ''}`}
+        {...attributes}
+        {...restListeners}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={cancelLongPress}
+        onPointerCancel={cancelLongPress}
+        onContextMenu={(e) => { e.preventDefault(); cancelLongPress(); didLongPress.current = true; setShowMenu(true) }}
+        onClick={handleClick}
+      >
+        <div className="board-note-text">{text || 'Nota vacía'}</div>
+        {note.dueDate && <div className="board-note-date">🗓 {formatDate(note.dueDate)}</div>}
+        {note.label && <div className="board-note-chip">{note.label}</div>}
+      </div>
+
+      {showMenu && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end' }}
+          onClick={() => setShowMenu(false)}
+        >
+          <div
+            style={{ background: '#fff', borderRadius: '16px 16px 0 0', padding: '16px', width: '100%', boxSizing: 'border-box' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ textAlign: 'center', marginBottom: 14, fontSize: 13, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 8px' }}>
+              {text.slice(0, 60) || 'Nota vacía'}
+            </div>
+            <button
+              onClick={() => { setShowMenu(false); onDelete() }}
+              style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: '#FEE2E2', color: '#DC2626', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+            >
+              🗑 Eliminar nota
+            </button>
+            <button
+              onClick={() => setShowMenu(false)}
+              style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: '#f3f4f6', color: '#374151', fontSize: 15, cursor: 'pointer', marginTop: 10 }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
 function BoardColumn({
   col,
   onAdd,
-  onNoteTap
+  onNoteTap,
+  onNoteDelete
 }: {
   col: Column
   onAdd: () => void
   onNoteTap: (note: Note) => void
+  onNoteDelete: (note: Note) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id, disabled: !col.canDrop })
 
@@ -172,7 +253,12 @@ function BoardColumn({
         className={`board-col-body${isOver && col.canDrop ? ' drop-over' : ''}${!col.canDrop ? ' no-drop' : ''}`}
       >
         {col.notes.map(note => (
-          <BoardNoteCard key={note.id} note={note} onTap={() => onNoteTap(note)} />
+          <BoardNoteCard
+            key={note.id}
+            note={note}
+            onTap={() => onNoteTap(note)}
+            onDelete={() => onNoteDelete(note)}
+          />
         ))}
         {col.canAdd && (
           <button className="board-add-btn" onClick={onAdd}>
@@ -207,7 +293,7 @@ export default function BoardView({ notes, onSave }: Props) {
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } })
+    useSensor(TouchSensor, { activationConstraint: { delay: 550, tolerance: 6 } })
   )
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
@@ -226,7 +312,9 @@ export default function BoardView({ notes, onSave }: Props) {
     } else {
       if (colId === '_overdue') return
       if (colId === '_nodate') {
-        updated = { ...note, dueDate: undefined }
+        const copy = { ...note }
+        delete copy.dueDate
+        updated = copy
       } else if (colId === '_today') {
         updated = { ...note, dueDate: todayAt9() }
       } else if (colId === '_week') {
@@ -243,6 +331,10 @@ export default function BoardView({ notes, onSave }: Props) {
     const idx = notes.findIndex(n => n.id === note.id)
     onSave(idx >= 0 ? notes.map((n, i) => (i === idx ? note : n)) : [...notes, note])
     setEditState(null)
+  }
+
+  const handleNoteDelete = (note: Note) => {
+    onSave(notes.filter(n => n.id !== note.id))
   }
 
   return (
@@ -272,6 +364,7 @@ export default function BoardView({ notes, onSave }: Props) {
                 setEditState({ note: null, defaultLabel: col.defaultLabel, defaultDueDate: col.defaultDueDate })
               }
               onNoteTap={note => setEditState({ note })}
+              onNoteDelete={handleNoteDelete}
             />
           ))}
         </div>
