@@ -1,12 +1,12 @@
-import { getAccessToken } from './auth'
+import { getGoogleCalendarToken } from './googleCalendarAuth'
 import type { CalendarEvent } from './types'
 
 export async function fetchGoogleCalendarEvents(
   start: Date,
   end: Date
-): Promise<CalendarEvent[] | null> {
-  const token = await getAccessToken()
-  if (!token) return null
+): Promise<CalendarEvent[]> {
+  const token = await getGoogleCalendarToken()
+  if (!token) return []
 
   const params = new URLSearchParams({
     timeMin: start.toISOString(),
@@ -21,7 +21,6 @@ export async function fetchGoogleCalendarEvents(
     { headers: { Authorization: `Bearer ${token}` } }
   )
 
-  if (res.status === 403 || res.status === 401) return null  // falta scope calendar
   if (!res.ok) return []
 
   const data = await res.json() as {

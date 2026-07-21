@@ -1,7 +1,7 @@
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string
 const REDIRECT_URI = 'https://cmahillo.github.io/productividapp-mobile/'
-const SCOPE = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/calendar.readonly'
+const SCOPE = 'https://www.googleapis.com/auth/drive'
 
 interface Tokens {
   access_token: string
@@ -64,8 +64,7 @@ export async function startAuth(): Promise<void> {
     code_challenge: challenge,
     code_challenge_method: 'S256',
     access_type: 'offline',
-    prompt: 'consent',
-    state: 'google'
+    prompt: 'consent'
   })
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }

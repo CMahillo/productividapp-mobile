@@ -786,28 +786,41 @@ body {
   color: #F59E0B;
 }
 
-.cal-ms-section {
+.cal-connections {
   margin-top: 8px;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
 
 .cal-connect-btn {
-  background: #0078D4;
-  color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 7px 14px;
-  font-size: 13px;
+  padding: 8px 14px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   width: 100%;
+  text-align: center;
+}
+
+.cal-connect-btn--google {
+  background: #4285F4;
+  color: #fff;
+}
+
+.cal-connect-btn--ms {
+  background: #0078D4;
+  color: #fff;
 }
 
 .cal-connect-btn--secondary {
   background: transparent;
   color: var(--text2);
   border: 1px solid var(--border);
+  font-weight: 500;
 }
 
 .cal-events {

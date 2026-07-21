@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { isAuthenticated, handleCallback, startAuth, logout } from './auth'
+import { handleGoogleCalendarCallback } from './googleCalendarAuth'
 import { handleMicrosoftCallback } from './microsoftAuth'
 import { readNotes, writeNotes, readQuickItems } from './drive'
 import { requestNotificationPermission, scheduleNotifications } from './notifications'
@@ -19,9 +20,10 @@ export default function App() {
       if (window.location.search.includes('code=')) {
         const urlState = new URLSearchParams(window.location.search).get('state')
         if (urlState === 'ms') {
-          // Microsoft callback: exchange code for tokens (non-fatal if fails)
           await handleMicrosoftCallback()
           window.history.replaceState({}, '', window.location.pathname)
+        } else if (urlState === 'g_cal') {
+          await handleGoogleCalendarCallback()
         } else {
           const ok = await handleCallback()
           if (!ok) { setState('auth-error'); return }

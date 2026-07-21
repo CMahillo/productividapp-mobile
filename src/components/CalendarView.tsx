@@ -14,6 +14,7 @@ import {
 import type { Note, CalendarEvent } from '../types'
 import { fetchGoogleCalendarEvents } from '../googleCalendar'
 import { fetchMicrosoftCalendarEvents } from '../microsoftCalendar'
+import { isGoogleCalendarAuthenticated, startGoogleCalendarAuth, logoutGoogleCalendar } from '../googleCalendarAuth'
 import { isMicrosoftAuthenticated, startMicrosoftAuth, logoutMicrosoft } from '../microsoftAuth'
 
 interface Props {
@@ -143,7 +144,7 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
   })
   const [activeNote, setActiveNote] = useState<Note | null>(null)
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
-  const [googleCalError, setGoogleCalError] = useState(false)
+  const [gCalConnected, setGCalConnected] = useState(() => isGoogleCalendarAuthenticated())
   const [msConnected, setMsConnected] = useState(() => isMicrosoftAuthenticated())
   const weekScrollRef = useRef<HTMLDivElement>(null)
   const todayColRef = useRef<HTMLDivElement>(null)
@@ -190,17 +191,11 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
       ])
 
       if (cancelled) return
-      if (googleResult === null) {
-        setGoogleCalError(true)
-        setCalEvents(msResult)
-      } else {
-        setGoogleCalError(false)
-        setCalEvents([...googleResult, ...msResult])
-      }
+      setCalEvents([...googleResult, ...msResult])
     }
     load()
     return () => { cancelled = true }
-  }, [calView, current, weekAnchor])
+  }, [calView, current, weekAnchor, gCalConnected, msConnected])
 
   // Scroll today's column into view when the week view is active
   useEffect(() => {
@@ -256,6 +251,14 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
 
   function hasCalDot(d: Date): boolean {
     return calEvents.some(ev => eventOnDay(ev, d))
+  }
+
+  const connectGoogleCalendar = () => { startGoogleCalendarAuth() }
+
+  const disconnectGoogleCalendar = () => {
+    logoutGoogleCalendar()
+    setGCalConnected(false)
+    setCalEvents(prev => prev.filter(e => e.source !== 'google'))
   }
 
   const connectMicrosoft = () => { startMicrosoftAuth() }
@@ -486,21 +489,20 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
               </div>
             )}
 
-            {/* Google Calendar reconnect banner */}
-            {googleCalError && (
-              <div className="cal-connect-banner">
-                <span>⚠️ Eventos de Google no disponibles</span>
-                <button className="cal-connect-btn" onClick={() => window.location.reload()}>
-                  Reconectar Google
+            {/* Calendar connections */}
+            <div className="cal-connections">
+              {gCalConnected ? (
+                <button className="cal-connect-btn cal-connect-btn--secondary" onClick={disconnectGoogleCalendar}>
+                  ✓ Google Calendar conectado
                 </button>
-              </div>
-            )}
-
-            {/* Microsoft connect button */}
-            <div className="cal-ms-section">
+              ) : (
+                <button className="cal-connect-btn cal-connect-btn--google" onClick={connectGoogleCalendar}>
+                  Conectar Google Calendar
+                </button>
+              )}
               {msConnected ? (
                 <button className="cal-connect-btn cal-connect-btn--secondary" onClick={disconnectMicrosoft}>
-                  Desconectar Outlook
+                  ✓ Outlook conectado
                 </button>
               ) : (
                 <button className="cal-connect-btn cal-connect-btn--ms" onClick={connectMicrosoft}>
