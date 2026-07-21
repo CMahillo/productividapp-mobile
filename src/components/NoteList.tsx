@@ -103,6 +103,7 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
         <CalendarView
           notes={notes}
           onNoteSelect={setDetail}
+          onSave={onSave}
         />
       ) : tab === 'board' ? (
         <BoardView notes={notes} onSave={onSave} />

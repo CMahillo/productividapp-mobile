@@ -1,10 +1,25 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+} from '@dnd-kit/core'
 import type { Note } from '../types'
 
 interface Props {
   notes: Note[]
   onNoteSelect: (note: Note) => void
+  onSave: (notes: Note[]) => void
 }
+
+type CalView = 'month' | 'week'
 
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
@@ -20,18 +35,106 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-const DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
-const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+function getMondayOf(date: Date): Date {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  const day = d.getDay()
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
+  return d
+}
 
-export default function CalendarView({ notes, onNoteSelect }: Props) {
+function weekDays(monday: Date): Date[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    return d
+  })
+}
+
+function padN(n: number) { return String(n).padStart(2, '0') }
+
+function toDateKey(d: Date) {
+  return `${d.getFullYear()}-${padN(d.getMonth() + 1)}-${padN(d.getDate())}`
+}
+
+const DAY_NAMES = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+const DAY_NAMES_FULL = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const MONTHS_SHORT = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+
+// ── Sub-components ─────────────────────────────────────────────────────────
+
+function DroppableDay({ dateKey, children, className, onClick }: {
+  dateKey: string
+  children: React.ReactNode
+  className?: string
+  onClick?: () => void
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `day:${dateKey}` })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className ?? ''}${isOver ? ' cal-drop-over' : ''}`}
+      onClick={onClick}
+    >
+      {children}
+    </div>
+  )
+}
+
+function DraggableCalNote({ note, onTap }: { note: Note; onTap: () => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: note.id,
+    data: { note }
+  })
+  return (
+    <div ref={setNodeRef} className={`cal-note-row${isDragging ? ' cal-dragging' : ''}`}>
+      <span
+        className="cal-drag-handle"
+        {...attributes}
+        {...listeners}
+        style={{ touchAction: 'none' }}
+        aria-label="Arrastrar nota"
+      >⠿</span>
+      <button className="event-row cal-event-btn" onClick={onTap}>
+        <span className="event-stripe" style={{ background: note.color }} />
+        <span className="event-body">
+          <span className="event-time">{formatTime(note.dueDate!)}</span>
+          <span className="event-text">{stripHtml(note.content) || 'Nota vacía'}</span>
+        </span>
+        <span className="note-row-chevron">›</span>
+      </button>
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
+
+export default function CalendarView({ notes, onNoteSelect, onSave }: Props) {
   const today = new Date()
+
+  const [calView, setCalView] = useState<CalView>(() => {
+    try { return (localStorage.getItem('cal-view') as CalView) || 'month' } catch { return 'month' }
+  })
   const [current, setCurrent] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
+  const [weekAnchor, setWeekAnchor] = useState(() => getMondayOf(today))
   const [selected, setSelected] = useState<Date>(today)
   const [panelOpen, setPanelOpen] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('cal-panel-open') !== 'false'
-    } catch { return true }
+    try { return localStorage.getItem('cal-panel-open') !== 'false' } catch { return true }
   })
+  const [activeNote, setActiveNote] = useState<Note | null>(null)
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } })
+  )
+
+  const switchView = (v: CalView) => {
+    if (v === 'week') setWeekAnchor(getMondayOf(selected))
+    else setCurrent(new Date(selected.getFullYear(), selected.getMonth(), 1))
+    setCalView(v)
+    try { localStorage.setItem('cal-view', v) } catch { /* ignore */ }
+  }
 
   const togglePanel = () => {
     setPanelOpen(prev => {
@@ -40,13 +143,6 @@ export default function CalendarView({ notes, onNoteSelect }: Props) {
       return next
     })
   }
-
-  const year = current.getFullYear()
-  const month = current.getMonth()
-
-  const firstDay = new Date(year, month, 1)
-  const startOffset = (firstDay.getDay() + 6) % 7
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
 
   const notesWithDate = notes.filter(n => !n.hidden && n.dueDate)
 
@@ -58,78 +154,182 @@ export default function CalendarView({ notes, onNoteSelect }: Props) {
     return notesWithDate.some(n => sameDay(new Date(n.dueDate!), d))
   }
 
-  const selectedNotes = notesForDay(selected)
+  const handleDragStart = useCallback((e: DragStartEvent) => {
+    const data = e.active.data.current as { note: Note } | undefined
+    setActiveNote(data?.note ?? null)
+  }, [])
 
+  const handleDragEnd = useCallback(({ active, over }: DragEndEvent) => {
+    setActiveNote(null)
+    if (!over) return
+    const data = active.data.current as { note: Note } | undefined
+    const note = data?.note
+    if (!note) return
+    const overIdStr = over.id as string
+    if (!overIdStr.startsWith('day:')) return
+    const dateKey = overIdStr.slice(4)
+    if (note.dueDate?.startsWith(dateKey)) return // same day, nothing to do
+    const [yr, mo, da] = dateKey.split('-').map(Number)
+    const existing = new Date(note.dueDate!)
+    const newDate = new Date(yr, mo - 1, da, existing.getHours(), existing.getMinutes(), 0, 0)
+    const newDueDate = `${newDate.getFullYear()}-${padN(newDate.getMonth()+1)}-${padN(newDate.getDate())}T${padN(newDate.getHours())}:${padN(newDate.getMinutes())}:00`
+    if (calView === 'month') setSelected(new Date(yr, mo - 1, da))
+    onSave(notes.map(n => n.id === note.id ? { ...n, dueDate: newDueDate } : n))
+  }, [calView, notes, onSave])
+
+  // ── Month view ─────────────────────────────────────────────────────────
+  const year = current.getFullYear()
+  const month = current.getMonth()
+  const startOffset = (new Date(year, month, 1).getDay() + 6) % 7
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
   const cells: (number | null)[] = [
     ...Array(startOffset).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
   ]
 
+  // ── Week view ───────────────────────────────────────────────────────────
+  const days = weekDays(weekAnchor)
+  const weekEnd = days[6]
+  const weekLabel = (() => {
+    const s = weekAnchor
+    const e = weekEnd
+    if (s.getMonth() === e.getMonth())
+      return `${s.getDate()} – ${e.getDate()} ${MONTHS_SHORT[s.getMonth()]} ${s.getFullYear()}`
+    if (s.getFullYear() === e.getFullYear())
+      return `${s.getDate()} ${MONTHS_SHORT[s.getMonth()]} – ${e.getDate()} ${MONTHS_SHORT[e.getMonth()]} ${s.getFullYear()}`
+    return `${s.getDate()} ${MONTHS_SHORT[s.getMonth()]} ${s.getFullYear()} – ${e.getDate()} ${MONTHS_SHORT[e.getMonth()]} ${e.getFullYear()}`
+  })()
+
+  const selectedNotes = notesForDay(selected)
   const selectedLabel = selected.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+  const showPanel = calView === 'month' && panelOpen
 
   return (
-    <div className={`calendar-wrap${panelOpen ? ' cal-with-panel' : ''}`}>
-      {/* Left column: nav + grid */}
-      <div className="cal-main">
-        <div className="cal-nav">
-          <button className="icon-btn" onClick={() => setCurrent(new Date(year, month - 1, 1))}>‹</button>
-          <span className="cal-title">{MONTHS[month]} {year}</span>
-          <button className="icon-btn" onClick={() => setCurrent(new Date(year, month + 1, 1))}>›</button>
-          <button
-            className={`icon-btn cal-panel-toggle${panelOpen ? ' active' : ''}`}
-            onClick={togglePanel}
-            aria-label={panelOpen ? 'Cerrar panel de eventos' : 'Abrir panel de eventos'}
-            title={panelOpen ? 'Cerrar panel' : 'Ver eventos del día'}
-          >
-            {panelOpen ? '✕' : '📋'}
-          </button>
-        </div>
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveNote(null)}>
+      <div className={`calendar-wrap${showPanel ? ' cal-with-panel' : ''}`}>
 
-        <div className="cal-grid">
-          {DAYS.map(d => (
-            <div key={d} className="cal-day-header">{d}</div>
-          ))}
+        {/* Left column: nav + grid/week */}
+        <div className="cal-main">
 
-          {cells.map((day, i) => {
-            if (!day) return <div key={`e${i}`} />
-            const date = new Date(year, month, day)
-            const isToday = sameDay(date, today)
-            const isSel = sameDay(date, selected)
-            const dot = hasDot(date)
-            return (
+          {/* Navigation */}
+          <div className="cal-nav">
+            <button className="icon-btn" onClick={() => {
+              if (calView === 'month') setCurrent(new Date(year, month - 1, 1))
+              else setWeekAnchor(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n })
+            }}>‹</button>
+
+            <span className="cal-title">
+              {calView === 'month' ? `${MONTHS[month]} ${year}` : weekLabel}
+            </span>
+
+            <button className="icon-btn" onClick={() => {
+              if (calView === 'month') setCurrent(new Date(year, month + 1, 1))
+              else setWeekAnchor(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n })
+            }}>›</button>
+
+            {calView === 'month' && (
               <button
-                key={day}
-                className={`cal-day ${isToday ? 'today' : ''} ${isSel ? 'selected' : ''}`}
-                onClick={() => setSelected(date)}
+                className={`icon-btn cal-panel-toggle${panelOpen ? ' active' : ''}`}
+                onClick={togglePanel}
+                aria-label={panelOpen ? 'Cerrar panel de eventos' : 'Abrir panel de eventos'}
               >
-                {day}
-                {dot && <span className="cal-dot" />}
+                {panelOpen ? '✕' : '📋'}
               </button>
-            )
-          })}
-        </div>
-      </div>
+            )}
+          </div>
 
-      {/* Right panel: events for selected day */}
-      <div className={`cal-panel${panelOpen ? ' cal-panel--open' : ''}`} aria-hidden={!panelOpen}>
-        <div className="cal-events">
-          <p className="cal-events-title">{selectedLabel}</p>
-          {selectedNotes.length === 0 ? (
-            <p className="empty-msg" style={{ marginTop: 16 }}>Sin notas este día</p>
-          ) : (
-            selectedNotes.map(note => (
-              <button key={note.id} className="event-row" onClick={() => onNoteSelect(note)}>
-                <span className="event-stripe" style={{ background: note.color }} />
-                <span className="event-body">
-                  <span className="event-time">{formatTime(note.dueDate!)}</span>
-                  <span className="event-text">{stripHtml(note.content) || 'Nota vacía'}</span>
-                </span>
-                <span className="note-row-chevron">›</span>
-              </button>
-            ))
+          {/* View toggle */}
+          <div className="cal-view-toggle">
+            <button className={`cal-view-btn${calView === 'month' ? ' active' : ''}`} onClick={() => switchView('month')}>Mes</button>
+            <button className={`cal-view-btn${calView === 'week' ? ' active' : ''}`} onClick={() => switchView('week')}>Semana</button>
+          </div>
+
+          {/* Month grid */}
+          {calView === 'month' && (
+            <div className="cal-grid">
+              {DAY_NAMES.map(d => (
+                <div key={d} className="cal-day-header">{d}</div>
+              ))}
+              {cells.map((day, i) => {
+                if (!day) return <div key={`e${i}`} />
+                const date = new Date(year, month, day)
+                const dateKey = toDateKey(date)
+                const isToday = sameDay(date, today)
+                const isSel = sameDay(date, selected)
+                const dot = hasDot(date)
+                return (
+                  <DroppableDay key={day} dateKey={dateKey} className="cal-day-droppable">
+                    <button
+                      className={`cal-day${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`}
+                      onClick={() => setSelected(date)}
+                    >
+                      {day}
+                      {dot && <span className="cal-dot" />}
+                    </button>
+                  </DroppableDay>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Week list */}
+          {calView === 'week' && (
+            <div className="cal-week">
+              {days.map((date, idx) => {
+                const isToday = sameDay(date, today)
+                const isSel = sameDay(date, selected)
+                const dayNotes = notesForDay(date)
+                const dateKey = toDateKey(date)
+                return (
+                  <DroppableDay
+                    key={idx}
+                    dateKey={dateKey}
+                    className={`cal-week-day${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`}
+                    onClick={() => setSelected(date)}
+                  >
+                    <div className="cal-week-day-header">
+                      <span className="cal-week-day-name">{DAY_NAMES_FULL[idx]}</span>
+                      <span className="cal-week-day-num">{date.getDate()}</span>
+                      {isToday && <span className="cal-week-today-badge">hoy</span>}
+                    </div>
+                    <div className="cal-week-day-notes" onClick={e => e.stopPropagation()}>
+                      {dayNotes.length === 0 ? (
+                        <span className="cal-week-empty">Sin notas</span>
+                      ) : (
+                        dayNotes.map(note => (
+                          <DraggableCalNote key={note.id} note={note} onTap={() => onNoteSelect(note)} />
+                        ))
+                      )}
+                    </div>
+                  </DroppableDay>
+                )
+              })}
+            </div>
           )}
         </div>
+
+        {/* Side panel (month mode only) */}
+        <div className={`cal-panel${showPanel ? ' cal-panel--open' : ''}`} aria-hidden={!showPanel}>
+          <div className="cal-events">
+            <p className="cal-events-title">{selectedLabel}</p>
+            {selectedNotes.length === 0 ? (
+              <p className="empty-msg" style={{ marginTop: 16 }}>Sin notas este día</p>
+            ) : (
+              selectedNotes.map(note => (
+                <DraggableCalNote key={note.id} note={note} onTap={() => onNoteSelect(note)} />
+              ))
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeNote && (
+          <div className="cal-drag-overlay" style={{ background: activeNote.color }}>
+            {stripHtml(activeNote.content).slice(0, 45) || 'Nota vacía'}
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   )
 }
