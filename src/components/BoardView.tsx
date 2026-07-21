@@ -233,20 +233,46 @@ function BoardColumn({
   col,
   onAdd,
   onNoteTap,
-  onNoteDelete
+  onNoteDelete,
+  reorderMode,
+  onMoveLeft,
+  onMoveRight,
+  isFirst,
+  isLast
 }: {
   col: Column
   onAdd: () => void
   onNoteTap: (note: Note) => void
   onNoteDelete: (note: Note) => void
+  reorderMode: boolean
+  onMoveLeft: () => void
+  onMoveRight: () => void
+  isFirst: boolean
+  isLast: boolean
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id, disabled: !col.canDrop })
 
   return (
     <div className="board-col">
       <div className="board-col-header">
+        {reorderMode && (
+          <button
+            className="board-reorder-btn"
+            onClick={onMoveLeft}
+            disabled={isFirst}
+            aria-label="Mover columna a la izquierda"
+          >◀</button>
+        )}
         <span className="board-col-title">{col.label}</span>
         <span className="board-col-count">{col.notes.length}</span>
+        {reorderMode && (
+          <button
+            className="board-reorder-btn"
+            onClick={onMoveRight}
+            disabled={isLast}
+            aria-label="Mover columna a la derecha"
+          >▶</button>
+        )}
       </div>
       <div
         ref={setNodeRef}
@@ -280,16 +306,47 @@ type EditState = { note: Note | null; defaultLabel?: string; defaultDueDate?: st
 export default function BoardView({ notes, onSave }: Props) {
   const [mode, setMode] = useState<FilterMode>('labels')
   const [editState, setEditState] = useState<EditState>(null)
+  const [reorderMode, setReorderMode] = useState(false)
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('board-column-order')
+      return saved ? (JSON.parse(saved) as string[]) : []
+    } catch { return [] }
+  })
 
   const allLabels = useMemo(
     () => [...new Set(notes.filter(n => !n.hidden && n.label).map(n => n.label as string))],
     [notes]
   )
 
-  const columns = useMemo(
+  const rawColumns = useMemo(
     () => (mode === 'labels' ? buildLabelColumns(notes) : buildDateColumns(notes)),
     [notes, mode]
   )
+
+  const columns = useMemo(() => {
+    if (mode !== 'labels' || columnOrder.length === 0) return rawColumns
+    const byId = new Map(rawColumns.map(c => [c.id, c]))
+    const ordered: Column[] = []
+    for (const id of columnOrder) {
+      const col = byId.get(id)
+      if (col) { ordered.push(col); byId.delete(id) }
+    }
+    for (const col of byId.values()) ordered.push(col)
+    return ordered
+  }, [rawColumns, columnOrder, mode])
+
+  const moveColumn = (colId: string, direction: -1 | 1) => {
+    const ids = columns.map(c => c.id)
+    const idx = ids.indexOf(colId)
+    if (idx < 0) return
+    const newIdx = idx + direction
+    if (newIdx < 0 || newIdx >= ids.length) return
+    const newOrder = [...ids]
+    ;[newOrder[idx], newOrder[newIdx]] = [newOrder[newIdx], newOrder[idx]]
+    setColumnOrder(newOrder)
+    localStorage.setItem('board-column-order', JSON.stringify(newOrder))
+  }
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -342,21 +399,29 @@ export default function BoardView({ notes, onSave }: Props) {
       <div className="board-filter">
         <button
           className={`board-filter-btn${mode === 'labels' ? ' active' : ''}`}
-          onClick={() => setMode('labels')}
+          onClick={() => { setMode('labels'); setReorderMode(false) }}
         >
           Etiquetas
         </button>
         <button
           className={`board-filter-btn${mode === 'dates' ? ' active' : ''}`}
-          onClick={() => setMode('dates')}
+          onClick={() => { setMode('dates'); setReorderMode(false) }}
         >
           Fechas
         </button>
+        {mode === 'labels' && (
+          <button
+            className={`board-filter-btn board-filter-btn--reorder${reorderMode ? ' active' : ''}`}
+            onClick={() => setReorderMode(r => !r)}
+          >
+            {reorderMode ? 'Listo' : '⇄'}
+          </button>
+        )}
       </div>
 
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div className="board-scroll">
-          {columns.map(col => (
+          {columns.map((col, idx) => (
             <BoardColumn
               key={col.id}
               col={col}
@@ -365,6 +430,11 @@ export default function BoardView({ notes, onSave }: Props) {
               }
               onNoteTap={note => setEditState({ note })}
               onNoteDelete={handleNoteDelete}
+              reorderMode={reorderMode}
+              onMoveLeft={() => moveColumn(col.id, -1)}
+              onMoveRight={() => moveColumn(col.id, 1)}
+              isFirst={idx === 0}
+              isLast={idx === columns.length - 1}
             />
           ))}
         </div>

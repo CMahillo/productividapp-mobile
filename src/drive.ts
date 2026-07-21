@@ -13,7 +13,7 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 
 async function findFolderId(): Promise<string | null> {
   const q = `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
-  const res = await apiFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`)
+  const res = await apiFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&orderBy=createdTime`)
   if (!res.ok) return null
   const data = await res.json() as { files: { id: string }[] }
   return data.files[0]?.id ?? null

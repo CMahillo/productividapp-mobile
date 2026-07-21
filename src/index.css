@@ -442,10 +442,53 @@ body {
 /* ── Calendar ── */
 .calendar-wrap {
   flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
+.calendar-wrap.cal-with-panel {
+  flex-direction: row;
+}
+
+.cal-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+.cal-with-panel .cal-main {
+  min-width: 180px;
+}
+
+/* Side panel */
+.cal-panel {
+  width: 0;
+  overflow: hidden;
+  border-left: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  transition: width .22s ease, border-color .22s ease;
+  flex-shrink: 0;
+}
+.cal-panel--open {
+  width: 42%;
+  min-width: 150px;
+  border-left-color: var(--border);
+  overflow-y: auto;
+}
+
+.cal-panel-toggle {
+  margin-left: 6px;
+  font-size: 16px;
+  opacity: 0.7;
+  transition: opacity .15s;
+}
+.cal-panel-toggle.active {
+  opacity: 1;
+  color: var(--accent);
+}
+.cal-panel-toggle:active { opacity: 0.5; }
 
 .cal-nav {
   display: flex;
@@ -502,9 +545,7 @@ body {
 
 .cal-events {
   flex: 1;
-  padding: 16px 16px 8px;
-  border-top: 1px solid var(--border);
-  margin-top: 8px;
+  padding: 12px 10px 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -899,6 +940,33 @@ body {
 .board-filter-btn.active {
   background: var(--accent);
   color: #fff;
+}
+.board-filter-btn--reorder {
+  flex: none;
+  padding: 8px 14px;
+  font-size: 15px;
+}
+
+.board-reorder-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 16px;
+  padding: 2px 5px;
+  cursor: pointer;
+  border-radius: 6px;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: background .12s;
+  touch-action: manipulation;
+}
+.board-reorder-btn:disabled {
+  color: var(--text2);
+  opacity: 0.25;
+  cursor: default;
+}
+.board-reorder-btn:active:not(:disabled) {
+  background: rgba(99,102,241,.18);
 }
 
 .board-scroll {
