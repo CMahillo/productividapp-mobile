@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   DndContext,
   DragEndEvent,
@@ -123,6 +123,18 @@ export default function CalendarView({ notes, onNoteSelect, onSave }: Props) {
     try { return localStorage.getItem('cal-panel-open') !== 'false' } catch { return true }
   })
   const [activeNote, setActiveNote] = useState<Note | null>(null)
+  const weekScrollRef = useRef<HTMLDivElement>(null)
+  const todayColRef = useRef<HTMLDivElement>(null)
+
+  // Scroll today's column into view when the week view is active
+  useEffect(() => {
+    if (calView !== 'week') return
+    const container = weekScrollRef.current
+    const col = todayColRef.current
+    if (container && col) {
+      container.scrollLeft = Math.max(0, col.offsetLeft - container.offsetLeft - 12)
+    }
+  }, [calView, weekAnchor])
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -272,9 +284,9 @@ export default function CalendarView({ notes, onNoteSelect, onSave }: Props) {
             </div>
           )}
 
-          {/* Week list */}
+          {/* Week columns */}
           {calView === 'week' && (
-            <div className="cal-week">
+            <div className="cal-week" ref={weekScrollRef}>
               {days.map((date, idx) => {
                 const isToday = sameDay(date, today)
                 const isSel = sameDay(date, selected)
@@ -284,17 +296,20 @@ export default function CalendarView({ notes, onNoteSelect, onSave }: Props) {
                   <DroppableDay
                     key={idx}
                     dateKey={dateKey}
-                    className={`cal-week-day${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`}
+                    className={`cal-week-col${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`}
                     onClick={() => setSelected(date)}
                   >
-                    <div className="cal-week-day-header">
-                      <span className="cal-week-day-name">{DAY_NAMES_FULL[idx]}</span>
-                      <span className="cal-week-day-num">{date.getDate()}</span>
-                      {isToday && <span className="cal-week-today-badge">hoy</span>}
+                    <div
+                      ref={isToday ? todayColRef : null}
+                      className="cal-week-col-header"
+                    >
+                      <span className="cal-week-col-name">{DAY_NAMES_FULL[idx]}</span>
+                      <span className="cal-week-col-num">{date.getDate()}</span>
+                      {isToday && <span className="cal-week-today-dot" />}
                     </div>
-                    <div className="cal-week-day-notes" onClick={e => e.stopPropagation()}>
+                    <div className="cal-week-col-body" onClick={e => e.stopPropagation()}>
                       {dayNotes.length === 0 ? (
-                        <span className="cal-week-empty">Sin notas</span>
+                        <span className="cal-week-empty">—</span>
                       ) : (
                         dayNotes.map(note => (
                           <DraggableCalNote key={note.id} note={note} onTap={() => onNoteSelect(note)} />
