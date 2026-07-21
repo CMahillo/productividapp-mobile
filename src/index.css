@@ -455,7 +455,7 @@ body {
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 .cal-with-panel .cal-main {
   min-width: 180px;
@@ -509,15 +509,14 @@ body {
 }
 .cal-week-col-body .note-row-chevron { display: none; }
 
-/* Drop indicator */
+/* Drop indicator — droppable div fills the grid cell as a plain block */
 .cal-day-droppable {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
 }
 .cal-day-droppable.cal-drop-over .cal-day {
-  background: rgba(99,102,241,.18);
+  background: rgba(99,102,241,.22);
   outline: 2px solid var(--accent);
+  outline-offset: -1px;
 }
 /* cal-week-col.cal-drop-over is defined inside the week column section above */
 
@@ -655,10 +654,12 @@ body {
 .cal-title { font-size: 17px; font-weight: 600; text-transform: capitalize; }
 
 .cal-grid {
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-  padding: 0 8px;
+  grid-template-rows: auto repeat(6, 1fr);
+  gap: 3px;
+  padding: 0 6px 6px;
 }
 
 .cal-day-header {
@@ -675,28 +676,30 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  aspect-ratio: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   background: none;
   border: none;
-  border-radius: 50%;
-  font-size: 14px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 500;
   color: var(--text);
   cursor: pointer;
   transition: background .15s;
+  box-sizing: border-box;
 }
 .cal-day:hover { background: var(--surface2); }
 
-/* Días con notas — tint visible */
+/* Días con notas */
 .cal-day.has-notes {
-  background: rgba(99, 102, 241, .13);
+  background: rgba(99, 102, 241, .11);
 }
 
-/* Hoy — anillo + tint más intenso */
+/* Hoy — tint intenso + color acento */
 .cal-day.today {
   color: var(--accent);
-  font-weight: 700;
-  outline: 2.5px solid var(--accent);
-  outline-offset: -1px;
+  font-weight: 800;
   background: rgba(99, 102, 241, .18);
 }
 .cal-day.today.has-notes {
@@ -707,22 +710,19 @@ body {
 .cal-day.selected {
   background: var(--accent);
   color: #fff;
-  outline: none;
 }
-/* Hoy + seleccionado — anillo blanco interior */
+/* Hoy + seleccionado */
 .cal-day.today.selected {
   background: var(--accent);
   color: #fff;
-  outline: 2px solid rgba(255, 255, 255, .7);
-  outline-offset: -4px;
 }
-.cal-day.selected .cal-dot { background: rgba(255,255,255,.8); }
+.cal-day.selected .cal-dot { background: rgba(255,255,255,.85); }
 
 .cal-dot {
   position: absolute;
-  bottom: 4px;
-  width: 6px;
-  height: 6px;
+  bottom: 5px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--accent);
 }
