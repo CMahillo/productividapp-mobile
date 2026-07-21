@@ -172,7 +172,7 @@ function BoardNoteCard({ note, onTap, onDelete }: { note: Note; onTap: () => voi
 
   const style: React.CSSProperties = {
     background: note.color,
-    touchAction: 'none',
+    touchAction: 'pan-y',
     ...(transform
       ? { transform: `translate3d(${transform.x}px,${transform.y}px,0)`, zIndex: 999, opacity: 0.9 }
       : {})

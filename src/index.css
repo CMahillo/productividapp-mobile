@@ -490,43 +490,22 @@ body {
 }
 .cal-panel-toggle:active { opacity: 0.5; }
 
-/* Drag handle + row for cal notes */
-.cal-note-row {
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
-}
-.cal-note-row.cal-dragging { opacity: 0.35; }
-.cal-drag-handle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  flex-shrink: 0;
-  color: var(--text2);
-  font-size: 15px;
-  opacity: 0.45;
-  cursor: grab;
-  border-radius: 8px;
-  transition: opacity .12s;
-}
-.cal-drag-handle:active { opacity: 0.9; cursor: grabbing; }
-.cal-event-btn { flex: 1; border-radius: 12px; }
+.event-row.cal-dragging { opacity: 0.35; }
 
-/* Compact note inside week columns */
-.cal-week-col-body .cal-note-row { gap: 2px; }
-.cal-week-col-body .cal-drag-handle { width: 16px; font-size: 12px; }
+/* Compact notes inside week columns */
 .cal-week-col-body .event-row {
-  padding: 7px 6px;
+  padding: 6px 7px;
   gap: 6px;
   border-radius: 8px;
+  cursor: grab;
 }
-.cal-week-col-body .event-stripe { min-height: 24px; }
-.cal-week-col-body .event-body { gap: 1px; }
+.cal-week-col-body .event-row:active { cursor: grabbing; }
+.cal-week-col-body .event-stripe { min-height: 28px; }
+.cal-week-col-body .event-body { gap: 2px; }
 .cal-week-col-body .event-time { font-size: 10px; }
 .cal-week-col-body .event-text {
   font-size: 11px;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
 }
 .cal-week-col-body .note-row-chevron { display: none; }
 
@@ -597,7 +576,7 @@ body {
 
 .cal-week-col {
   flex-shrink: 0;
-  width: 120px;
+  width: 155px;
   display: flex;
   flex-direction: column;
   border-radius: 12px;

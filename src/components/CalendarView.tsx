@@ -88,23 +88,21 @@ function DraggableCalNote({ note, onTap }: { note: Note; onTap: () => void }) {
     data: { note }
   })
   return (
-    <div ref={setNodeRef} className={`cal-note-row${isDragging ? ' cal-dragging' : ''}`}>
-      <span
-        className="cal-drag-handle"
-        {...attributes}
-        {...listeners}
-        style={{ touchAction: 'none' }}
-        aria-label="Arrastrar nota"
-      >⠿</span>
-      <button className="event-row cal-event-btn" onClick={onTap}>
-        <span className="event-stripe" style={{ background: note.color }} />
-        <span className="event-body">
-          <span className="event-time">{formatTime(note.dueDate!)}</span>
-          <span className="event-text">{stripHtml(note.content) || 'Nota vacía'}</span>
-        </span>
-        <span className="note-row-chevron">›</span>
-      </button>
-    </div>
+    <button
+      ref={setNodeRef}
+      className={`event-row${isDragging ? ' cal-dragging' : ''}`}
+      style={{ touchAction: 'none' }}
+      {...attributes}
+      {...listeners}
+      onClick={onTap}
+    >
+      <span className="event-stripe" style={{ background: note.color }} />
+      <span className="event-body">
+        <span className="event-time">{formatTime(note.dueDate!)}</span>
+        <span className="event-text">{stripHtml(note.content) || 'Nota vacía'}</span>
+      </span>
+      <span className="note-row-chevron">›</span>
+    </button>
   )
 }
 
