@@ -443,11 +443,8 @@ body {
 .calendar-wrap {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.calendar-wrap.cal-with-panel {
   flex-direction: row;
+  overflow: hidden;
 }
 
 .cal-main {
