@@ -22,7 +22,7 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
   const [tab, setTab] = useState<Tab>('notes')
   const [query, setQuery] = useState('')
   const [detail, setDetail] = useState<Note | null>(null)
-  const [editing, setEditing] = useState<Note | 'new' | null>(null)
+  const [editState, setEditState] = useState<{ note: Note | null; defaultDueDate?: string } | null>(null)
 
   const availableLabels = useMemo(
     () => [...new Set(notes.map(n => n.label).filter((l): l is string => !!l))],
@@ -37,8 +37,14 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
   const handleSave = (note: Note) => {
     const idx = notes.findIndex(n => n.id === note.id)
     onSave(idx >= 0 ? notes.map((n, i) => (i === idx ? note : n)) : [...notes, note])
-    setEditing(null)
+    setEditState(null)
     if (detail?.id === note.id) setDetail(note)
+  }
+
+  const handleNewNoteForDate = (date: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const dueDate = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T09:00:00`
+    setEditState({ note: null, defaultDueDate: dueDate })
   }
 
   const handleDelete = (id: string) => {
@@ -55,7 +61,7 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
 
   const openEdit = (note: Note) => {
     setDetail(null)
-    setEditing(note)
+    setEditState({ note })
   }
 
   return (
@@ -71,7 +77,7 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
               <button className="icon-btn" onClick={onSync} disabled={syncing} title="Sincronizar">
                 {syncing ? <span className="spinner-sm" /> : '↻'}
               </button>
-              <button className="icon-btn add-btn" onClick={() => setEditing('new')} title="Nueva nota">+</button>
+              <button className="icon-btn add-btn" onClick={() => setEditState({ note: null })} title="Nueva nota">+</button>
             </>
           )}
           <button className="icon-btn" onClick={onLogout} title="Cerrar sesión" style={{ fontSize: 14 }}>⏏</button>
@@ -104,6 +110,7 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
           notes={notes}
           onNoteSelect={setDetail}
           onSave={onSave}
+          onNewNote={handleNewNoteForDate}
         />
       ) : tab === 'board' ? (
         <BoardView notes={notes} onSave={onSave} />
@@ -143,12 +150,13 @@ export default function NoteList({ notes, quickItems, syncing, onSave, onSync, o
       )}
 
       {/* Note editor */}
-      {editing !== null && (
+      {editState !== null && (
         <NoteEditor
-          note={editing === 'new' ? null : editing}
+          note={editState.note}
           labels={availableLabels}
+          defaultDueDate={editState.defaultDueDate}
           onSave={handleSave}
-          onClose={() => setEditing(null)}
+          onClose={() => setEditState(null)}
         />
       )}
     </div>

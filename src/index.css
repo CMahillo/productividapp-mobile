@@ -487,6 +487,20 @@ body {
 }
 .cal-panel-toggle:active { opacity: 0.5; }
 
+.cal-weekend-toggle {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.5;
+  letter-spacing: 0.5px;
+  transition: opacity .15s, color .15s;
+}
+.cal-weekend-toggle.active {
+  opacity: 1;
+  color: var(--accent);
+}
+.cal-weekend-toggle:active { opacity: 0.4; }
+
 .event-row.cal-dragging { opacity: 0.35; }
 
 /* Compact notes inside week columns */
