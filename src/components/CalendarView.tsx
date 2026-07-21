@@ -129,16 +129,26 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
   const todayColRef = useRef<HTMLDivElement>(null)
   const longTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const didLongPress = useRef(false)
+  const longPressPos = useRef<{ x: number; y: number } | null>(null)
 
-  function startLongPress(date: Date) {
+  function startLongPress(date: Date, e: React.PointerEvent) {
     didLongPress.current = false
+    longPressPos.current = { x: e.clientX, y: e.clientY }
     longTimer.current = setTimeout(() => {
       didLongPress.current = true
+      longPressPos.current = null
       onNewNote?.(date)
     }, 500)
   }
+  function checkLongPressMove(e: React.PointerEvent) {
+    if (!longPressPos.current || !longTimer.current) return
+    const dx = Math.abs(e.clientX - longPressPos.current.x)
+    const dy = Math.abs(e.clientY - longPressPos.current.y)
+    if (dx > 10 || dy > 10) cancelLongPress()
+  }
   function cancelLongPress() {
     if (longTimer.current) { clearTimeout(longTimer.current); longTimer.current = null }
+    longPressPos.current = null
   }
 
   // Scroll today's column into view when the week view is active
@@ -306,10 +316,10 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
                   <DroppableDay key={day} dateKey={dateKey} className="cal-day-droppable">
                     <button
                       className={`cal-day${isToday ? ' today' : ''}${isSel ? ' selected' : ''}${dot ? ' has-notes' : ''}`}
-                      onPointerDown={() => startLongPress(date)}
+                      onPointerDown={(e) => startLongPress(date, e)}
                       onPointerUp={cancelLongPress}
                       onPointerCancel={cancelLongPress}
-                      onPointerMove={cancelLongPress}
+                      onPointerMove={checkLongPressMove}
                       onClick={() => { if (!didLongPress.current) setSelected(date) }}
                     >
                       {day}
@@ -323,7 +333,7 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
 
           {/* Week columns */}
           {calView === 'week' && (
-            <div className="cal-week" ref={weekScrollRef}>
+            <div className={`cal-week${showWeekends ? '' : ' cal-week--5col'}`} ref={weekScrollRef}>
               {visibleDays.map((date) => {
                 const isToday = sameDay(date, today)
                 const isSel = sameDay(date, selected)
@@ -340,10 +350,10 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
                     <div
                       ref={isToday ? todayColRef : null}
                       className="cal-week-col-header"
-                      onPointerDown={() => startLongPress(date)}
+                      onPointerDown={(e) => startLongPress(date, e)}
                       onPointerUp={cancelLongPress}
                       onPointerCancel={cancelLongPress}
-                      onPointerMove={cancelLongPress}
+                      onPointerMove={checkLongPressMove}
                     >
                       <span className="cal-week-col-name">{DAY_NAMES_FULL[dayIdx]}</span>
                       <span className="cal-week-col-num">{date.getDate()}</span>
