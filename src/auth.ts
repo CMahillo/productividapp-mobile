@@ -1,8 +1,7 @@
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string
 const REDIRECT_URI = 'https://cmahillo.github.io/productividapp-mobile/'
-// drive scope allows reading files regardless of which app created them
-const SCOPE = 'https://www.googleapis.com/auth/drive'
+const SCOPE = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/calendar.readonly'
 
 interface Tokens {
   access_token: string
@@ -65,7 +64,8 @@ export async function startAuth(): Promise<void> {
     code_challenge: challenge,
     code_challenge_method: 'S256',
     access_type: 'offline',
-    prompt: 'consent'
+    prompt: 'consent',
+    state: 'google'
   })
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }

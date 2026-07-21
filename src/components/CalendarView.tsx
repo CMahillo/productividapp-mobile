@@ -11,7 +11,10 @@ import {
   useDraggable,
   useDroppable,
 } from '@dnd-kit/core'
-import type { Note } from '../types'
+import type { Note, CalendarEvent } from '../types'
+import { fetchGoogleCalendarEvents } from '../googleCalendar'
+import { fetchMicrosoftCalendarEvents } from '../microsoftCalendar'
+import { isMicrosoftAuthenticated, startMicrosoftAuth, logoutMicrosoft } from '../microsoftAuth'
 
 interface Props {
   notes: Note[]
@@ -30,6 +33,20 @@ function formatTime(iso: string): string {
   const d = new Date(iso)
   const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0
   return hasTime ? d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : 'Todo el día'
+}
+
+function formatEventTime(ev: CalendarEvent): string {
+  if (ev.allDay) return 'Todo el día'
+  const d = new Date(ev.start)
+  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+}
+
+function eventOnDay(ev: CalendarEvent, d: Date): boolean {
+  const start = new Date(ev.start)
+  const end = new Date(ev.end)
+  const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)
+  const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59)
+  return start <= dayEnd && end >= dayStart
 }
 
 function stripHtml(html: string): string {
@@ -125,6 +142,9 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
     try { return localStorage.getItem('cal-show-weekends') === 'true' } catch { return false }
   })
   const [activeNote, setActiveNote] = useState<Note | null>(null)
+  const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
+  const [googleCalError, setGoogleCalError] = useState(false)
+  const [msConnected, setMsConnected] = useState(() => isMicrosoftAuthenticated())
   const weekScrollRef = useRef<HTMLDivElement>(null)
   const todayColRef = useRef<HTMLDivElement>(null)
   const longTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -150,6 +170,37 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
     if (longTimer.current) { clearTimeout(longTimer.current); longTimer.current = null }
     longPressPos.current = null
   }
+
+  // Fetch calendar events for the visible range
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      const yr = current.getFullYear()
+      const mo = current.getMonth()
+      const start = calView === 'month'
+        ? new Date(yr, mo, 1)
+        : new Date(weekAnchor)
+      const end = calView === 'month'
+        ? new Date(yr, mo + 1, 0, 23, 59, 59)
+        : (() => { const d = new Date(weekAnchor); d.setDate(d.getDate() + 6); d.setHours(23, 59, 59); return d })()
+
+      const [googleResult, msResult] = await Promise.all([
+        fetchGoogleCalendarEvents(start, end),
+        fetchMicrosoftCalendarEvents(start, end),
+      ])
+
+      if (cancelled) return
+      if (googleResult === null) {
+        setGoogleCalError(true)
+        setCalEvents(msResult)
+      } else {
+        setGoogleCalError(false)
+        setCalEvents([...googleResult, ...msResult])
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [calView, current, weekAnchor])
 
   // Scroll today's column into view when the week view is active
   useEffect(() => {
@@ -197,6 +248,22 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
 
   function hasDot(d: Date): boolean {
     return notesWithDate.some(n => sameDay(new Date(n.dueDate!), d))
+  }
+
+  function eventsForDay(d: Date): CalendarEvent[] {
+    return calEvents.filter(ev => eventOnDay(ev, d))
+  }
+
+  function hasCalDot(d: Date): boolean {
+    return calEvents.some(ev => eventOnDay(ev, d))
+  }
+
+  const connectMicrosoft = () => { startMicrosoftAuth() }
+
+  const disconnectMicrosoft = () => {
+    logoutMicrosoft()
+    setMsConnected(false)
+    setCalEvents(prev => prev.filter(e => e.source !== 'microsoft'))
   }
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
@@ -312,6 +379,7 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
                 const isToday = sameDay(date, today)
                 const isSel = sameDay(date, selected)
                 const dot = hasDot(date)
+                const calDot = hasCalDot(date)
                 return (
                   <DroppableDay key={day} dateKey={dateKey} className="cal-day-droppable">
                     <button
@@ -323,7 +391,10 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
                       onClick={() => { if (!didLongPress.current) setSelected(date) }}
                     >
                       {day}
-                      {dot && <span className="cal-dot" />}
+                      <span className="cal-dots-row">
+                        {dot && <span className="cal-dot" />}
+                        {calDot && <span className="cal-dot cal-dot--event" />}
+                      </span>
                     </button>
                   </DroppableDay>
                 )
@@ -361,12 +432,23 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
                       {isToday && <span className="cal-week-today-dot" />}
                     </div>
                     <div className="cal-week-col-body" onClick={e => e.stopPropagation()}>
-                      {dayNotes.length === 0 ? (
+                      {dayNotes.length === 0 && eventsForDay(date).length === 0 ? (
                         <span className="cal-week-empty">—</span>
                       ) : (
-                        dayNotes.map(note => (
-                          <DraggableCalNote key={note.id} note={note} onTap={() => onNoteSelect(note)} />
-                        ))
+                        <>
+                          {dayNotes.map(note => (
+                            <DraggableCalNote key={note.id} note={note} onTap={() => onNoteSelect(note)} />
+                          ))}
+                          {eventsForDay(date).map(ev => (
+                            <div key={ev.id} className={`event-row cal-evt-row cal-evt-row--${ev.source}`}>
+                              <span className="event-stripe" style={{ background: ev.source === 'google' ? '#4285F4' : '#0078D4' }} />
+                              <span className="event-body">
+                                <span className="event-time">{formatEventTime(ev)}</span>
+                                <span className="event-text">{ev.title}</span>
+                              </span>
+                            </div>
+                          ))}
+                        </>
                       )}
                     </div>
                   </DroppableDay>
@@ -380,13 +462,52 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
         <div className={`cal-panel${showPanel ? ' cal-panel--open' : ''}`} aria-hidden={!showPanel}>
           <div className="cal-events">
             <p className="cal-events-title">{selectedLabel}</p>
-            {selectedNotes.length === 0 ? (
-              <p className="empty-msg" style={{ marginTop: 16 }}>Sin notas este día</p>
-            ) : (
-              selectedNotes.map(note => (
-                <DraggableCalNote key={note.id} note={note} onTap={() => onNoteSelect(note)} />
-              ))
+
+            {/* Notes */}
+            {selectedNotes.length === 0 && eventsForDay(selected).length === 0 && (
+              <p className="empty-msg" style={{ marginTop: 16 }}>Sin notas ni eventos este día</p>
             )}
+            {selectedNotes.map(note => (
+              <DraggableCalNote key={note.id} note={note} onTap={() => onNoteSelect(note)} />
+            ))}
+
+            {/* Calendar events */}
+            {eventsForDay(selected).length > 0 && (
+              <div className="cal-evt-section">
+                {eventsForDay(selected).map(ev => (
+                  <div key={ev.id} className={`event-row cal-evt-row cal-evt-row--${ev.source}`}>
+                    <span className="event-stripe" style={{ background: ev.source === 'google' ? '#4285F4' : '#0078D4' }} />
+                    <span className="event-body">
+                      <span className="event-time">{formatEventTime(ev)}</span>
+                      <span className="event-text">{ev.title}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Google Calendar reconnect banner */}
+            {googleCalError && (
+              <div className="cal-connect-banner">
+                <span>⚠️ Eventos de Google no disponibles</span>
+                <button className="cal-connect-btn" onClick={() => window.location.reload()}>
+                  Reconectar Google
+                </button>
+              </div>
+            )}
+
+            {/* Microsoft connect button */}
+            <div className="cal-ms-section">
+              {msConnected ? (
+                <button className="cal-connect-btn cal-connect-btn--secondary" onClick={disconnectMicrosoft}>
+                  Desconectar Outlook
+                </button>
+              ) : (
+                <button className="cal-connect-btn cal-connect-btn--ms" onClick={connectMicrosoft}>
+                  Conectar Outlook
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

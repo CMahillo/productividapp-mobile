@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { isAuthenticated, handleCallback, startAuth, logout } from './auth'
+import { handleMicrosoftCallback } from './microsoftAuth'
 import { readNotes, writeNotes, readQuickItems } from './drive'
 import { requestNotificationPermission, scheduleNotifications } from './notifications'
 import type { Note, QuickItem } from './types'
@@ -16,8 +17,15 @@ export default function App() {
   useEffect(() => {
     async function init() {
       if (window.location.search.includes('code=')) {
-        const ok = await handleCallback()
-        if (!ok) { setState('auth-error'); return }
+        const urlState = new URLSearchParams(window.location.search).get('state')
+        if (urlState === 'ms') {
+          // Microsoft callback: exchange code for tokens (non-fatal if fails)
+          await handleMicrosoftCallback()
+          window.history.replaceState({}, '', window.location.pathname)
+        } else {
+          const ok = await handleCallback()
+          if (!ok) { setState('auth-error'); return }
+        }
       }
       if (!isAuthenticated()) { setState('login'); return }
       await loadNotes()

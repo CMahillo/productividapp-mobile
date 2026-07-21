@@ -731,15 +731,83 @@ body {
   background: var(--accent);
   color: #fff;
 }
-.cal-day.selected .cal-dot { background: rgba(255,255,255,.85); }
 
-.cal-dot {
+.cal-dots-row {
   position: absolute;
   bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.cal-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--accent);
+  flex-shrink: 0;
+}
+
+.cal-dot--event {
+  background: #4285F4;
+}
+
+.cal-day.selected .cal-dot { background: rgba(255,255,255,.85); }
+.cal-day.selected .cal-dot--event { background: rgba(255,255,255,.75); }
+
+/* Calendar event rows (read-only, no hover) */
+.cal-evt-row {
+  cursor: default;
+  pointer-events: none;
+}
+.cal-evt-row:active { background: var(--surface); }
+
+.cal-evt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+/* Google reconnect / MS connect banners */
+.cal-connect-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(245,158,11,.1);
+  border: 1px solid rgba(245,158,11,.3);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #F59E0B;
+}
+
+.cal-ms-section {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+}
+
+.cal-connect-btn {
+  background: #0078D4;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+}
+
+.cal-connect-btn--secondary {
+  background: transparent;
+  color: var(--text2);
+  border: 1px solid var(--border);
 }
 
 .cal-events {
