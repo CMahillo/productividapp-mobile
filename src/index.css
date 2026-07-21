@@ -693,14 +693,14 @@ body {
   background: rgba(99, 102, 241, .11);
 }
 
-/* Hoy — tint intenso + color acento */
+/* Hoy — fondo ámbar suave + número amarillo */
 .cal-day.today {
-  color: var(--accent);
+  color: #F59E0B;
   font-weight: 800;
-  background: rgba(99, 102, 241, .18);
+  background: rgba(245, 158, 11, .18);
 }
 .cal-day.today.has-notes {
-  background: rgba(99, 102, 241, .22);
+  background: rgba(245, 158, 11, .24);
 }
 
 /* Día seleccionado — fill sólido */
