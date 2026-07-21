@@ -350,6 +350,7 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
                     <div
                       ref={isToday ? todayColRef : null}
                       className="cal-week-col-header"
+                      style={{ touchAction: 'pan-x' }}
                       onPointerDown={(e) => startLongPress(date, e)}
                       onPointerUp={cancelLongPress}
                       onPointerCancel={cancelLongPress}

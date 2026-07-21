@@ -585,9 +585,7 @@ body {
 .cal-week::-webkit-scrollbar { display: none; }
 
 .cal-week--5col .cal-week-col {
-  flex: 1;
-  width: auto;
-  min-width: 0;
+  width: 190px;
 }
 
 .cal-week-col {
