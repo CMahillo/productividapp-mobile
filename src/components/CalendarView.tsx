@@ -270,7 +270,7 @@ export default function CalendarView({ notes, onNoteSelect, onSave }: Props) {
                 return (
                   <DroppableDay key={day} dateKey={dateKey} className="cal-day-droppable">
                     <button
-                      className={`cal-day${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`}
+                      className={`cal-day${isToday ? ' today' : ''}${isSel ? ' selected' : ''}${dot ? ' has-notes' : ''}`}
                       onClick={() => setSelected(date)}
                     >
                       {day}

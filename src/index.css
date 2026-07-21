@@ -685,15 +685,44 @@ body {
   transition: background .15s;
 }
 .cal-day:hover { background: var(--surface2); }
-.cal-day.today { color: var(--accent); font-weight: 700; }
-.cal-day.selected { background: var(--accent); color: #fff; }
-.cal-day.selected .cal-dot { background: #fff; }
+
+/* Días con notas — tint visible */
+.cal-day.has-notes {
+  background: rgba(99, 102, 241, .13);
+}
+
+/* Hoy — anillo + tint más intenso */
+.cal-day.today {
+  color: var(--accent);
+  font-weight: 700;
+  outline: 2.5px solid var(--accent);
+  outline-offset: -1px;
+  background: rgba(99, 102, 241, .18);
+}
+.cal-day.today.has-notes {
+  background: rgba(99, 102, 241, .22);
+}
+
+/* Día seleccionado — fill sólido */
+.cal-day.selected {
+  background: var(--accent);
+  color: #fff;
+  outline: none;
+}
+/* Hoy + seleccionado — anillo blanco interior */
+.cal-day.today.selected {
+  background: var(--accent);
+  color: #fff;
+  outline: 2px solid rgba(255, 255, 255, .7);
+  outline-offset: -4px;
+}
+.cal-day.selected .cal-dot { background: rgba(255,255,255,.8); }
 
 .cal-dot {
   position: absolute;
-  bottom: 3px;
-  width: 4px;
-  height: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--accent);
 }
