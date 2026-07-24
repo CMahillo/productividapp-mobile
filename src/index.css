@@ -790,8 +790,21 @@ body {
 .cal-evt-row {
   cursor: default;
   pointer-events: none;
+  text-decoration: none;
+  color: inherit;
 }
 .cal-evt-row:active { background: var(--surface); }
+a.cal-evt-row {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.cal-evt-open {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text2);
+  flex-shrink: 0;
+}
 
 .cal-evt-section {
   display: flex;

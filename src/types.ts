@@ -29,4 +29,5 @@ export interface CalendarEvent {
   end: string     // ISO 8601
   allDay: boolean
   source: 'google' | 'microsoft'
+  webLink?: string
 }

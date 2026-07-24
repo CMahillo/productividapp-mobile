@@ -29,6 +29,7 @@ export async function fetchGoogleCalendarEvents(
       summary?: string
       start?: { dateTime?: string; date?: string }
       end?: { dateTime?: string; date?: string }
+      htmlLink?: string
     }>
   }
 
@@ -39,5 +40,6 @@ export async function fetchGoogleCalendarEvents(
     end: ev.end?.dateTime ?? ev.end?.date ?? '',
     allDay: !ev.start?.dateTime,
     source: 'google' as const,
+    webLink: ev.htmlLink,
   }))
 }

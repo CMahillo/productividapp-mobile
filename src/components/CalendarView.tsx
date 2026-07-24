@@ -125,6 +125,33 @@ function DraggableCalNote({ note, onTap }: { note: Note; onTap: () => void }) {
   )
 }
 
+function CalEventRow({ ev }: { ev: CalendarEvent }) {
+  const color = ev.source === 'google' ? '#4285F4' : '#0078D4'
+  const inner = (
+    <>
+      <span className="event-stripe" style={{ background: color }} />
+      <span className="event-body">
+        <span className="event-time">{formatEventTime(ev)}</span>
+        <span className="event-text">{ev.title}</span>
+      </span>
+      {ev.webLink && <span className="cal-evt-open">↗</span>}
+    </>
+  )
+  if (ev.webLink) {
+    return (
+      <a
+        href={ev.webLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`event-row cal-evt-row cal-evt-row--${ev.source}`}
+      >
+        {inner}
+      </a>
+    )
+  }
+  return <div className={`event-row cal-evt-row cal-evt-row--${ev.source}`}>{inner}</div>
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }: Props) {
@@ -443,13 +470,7 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
                             <DraggableCalNote key={note.id} note={note} onTap={() => onNoteSelect(note)} />
                           ))}
                           {eventsForDay(date).map(ev => (
-                            <div key={ev.id} className={`event-row cal-evt-row cal-evt-row--${ev.source}`}>
-                              <span className="event-stripe" style={{ background: ev.source === 'google' ? '#4285F4' : '#0078D4' }} />
-                              <span className="event-body">
-                                <span className="event-time">{formatEventTime(ev)}</span>
-                                <span className="event-text">{ev.title}</span>
-                              </span>
-                            </div>
+                            <CalEventRow key={ev.id} ev={ev} />
                           ))}
                         </>
                       )}
@@ -478,13 +499,7 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
             {eventsForDay(selected).length > 0 && (
               <div className="cal-evt-section">
                 {eventsForDay(selected).map(ev => (
-                  <div key={ev.id} className={`event-row cal-evt-row cal-evt-row--${ev.source}`}>
-                    <span className="event-stripe" style={{ background: ev.source === 'google' ? '#4285F4' : '#0078D4' }} />
-                    <span className="event-body">
-                      <span className="event-time">{formatEventTime(ev)}</span>
-                      <span className="event-text">{ev.title}</span>
-                    </span>
-                  </div>
+                  <CalEventRow key={ev.id} ev={ev} />
                 ))}
               </div>
             )}

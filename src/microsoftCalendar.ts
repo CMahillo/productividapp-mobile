@@ -35,6 +35,7 @@ export async function fetchMicrosoftCalendarEvents(
       start?: { dateTime: string }
       end?: { dateTime: string }
       isAllDay?: boolean
+      webLink?: string
     }>
   }
 
@@ -45,6 +46,7 @@ export async function fetchMicrosoftCalendarEvents(
     end: ev.end?.dateTime ?? '',
     allDay: ev.isAllDay ?? false,
     source: 'microsoft' as const,
+    webLink: ev.webLink,
   }))
 }
 
