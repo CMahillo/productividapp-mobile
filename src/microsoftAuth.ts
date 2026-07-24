@@ -3,7 +3,7 @@
 // Single-page application redirect URI in the Azure portal under this client ID.
 const MS_CLIENT_ID = 'ed31f749-bd5b-444e-b2be-945d9c2b0c6b'
 const MS_REDIRECT_URI = 'https://cmahillo.github.io/productividapp-mobile/'
-const MS_SCOPE = 'https://graph.microsoft.com/Calendars.Read offline_access'
+const MS_SCOPE = 'https://graph.microsoft.com/Calendars.ReadWrite offline_access'
 const MS_BASE = 'https://login.microsoftonline.com/common/oauth2/v2.0'
 
 interface MsTokens {

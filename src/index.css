@@ -412,6 +412,34 @@ body {
   text-transform: capitalize;
 }
 
+.detail-outlook {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.outlook-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text1);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.outlook-btn:active { background: var(--border); }
+
+.outlook-feedback {
+  font-size: 13px;
+}
+.outlook-feedback--creating { color: var(--text2); }
+.outlook-feedback--success  { color: #16a34a; }
+.outlook-feedback--error    { color: #dc2626; }
+
 /* ── Bottom tab bar ── */
 .tab-bar {
   display: flex;

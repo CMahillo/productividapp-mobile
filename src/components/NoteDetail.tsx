@@ -1,4 +1,7 @@
+import { useState } from 'react'
 import type { Note } from '../types'
+import { isMicrosoftAuthenticated } from '../microsoftAuth'
+import { createMicrosoftCalendarEvent } from '../microsoftCalendar'
 
 interface Props {
   note: Note
@@ -13,6 +16,33 @@ function formatDate(iso: string): string {
   const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0
   const date = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
   return hasTime ? `${date}, ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : date
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+    .trim()
+}
+
+function toLocalISO(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`
+}
+
+function buildEventDates(note: Note): { start: string; end: string } {
+  let startDate: Date
+  if (note.dueDate) {
+    startDate = new Date(note.dueDate)
+    if (startDate.getHours() === 0 && startDate.getMinutes() === 0) startDate.setHours(9, 0, 0, 0)
+  } else {
+    startDate = new Date()
+    startDate.setHours(9, 0, 0, 0)
+  }
+  const endDate = new Date(startDate.getTime() + 60 * 60 * 1000)
+  return { start: toLocalISO(startDate), end: toLocalISO(endDate) }
 }
 
 function IconPencil() {
@@ -36,6 +66,10 @@ function IconTrash() {
 }
 
 export default function NoteDetail({ note, onEdit, onDelete, onToggle, onClose }: Props) {
+  const [outlookStatus, setOutlookStatus] = useState<'idle' | 'creating' | 'success' | 'error'>('idle')
+  const [outlookError, setOutlookError] = useState<string | null>(null)
+  const msConnected = isMicrosoftAuthenticated()
+
   const handleCheckbox = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement
     const cb = target.classList.contains('note-cb') ? target : target.closest<HTMLElement>('.note-cb')
@@ -51,6 +85,23 @@ export default function NoteDetail({ note, onEdit, onDelete, onToggle, onClose }
   const handleDelete = () => {
     if (!window.confirm('¿Eliminar esta nota?')) return
     onDelete()
+  }
+
+  const handleSendToOutlook = async () => {
+    setOutlookStatus('creating')
+    setOutlookError(null)
+
+    const plain = stripHtml(note.content)
+    const title = plain.split('\n').find(l => l.trim()) ?? 'Nota'
+    const { start, end } = buildEventDates(note)
+
+    const result = await createMicrosoftCalendarEvent(title.substring(0, 60), plain, start, end)
+    if (result.success) {
+      setOutlookStatus('success')
+    } else {
+      setOutlookError(result.error ?? 'Error desconocido')
+      setOutlookStatus('error')
+    }
   }
 
   return (
@@ -79,6 +130,25 @@ export default function NoteDetail({ note, onEdit, onDelete, onToggle, onClose }
         {note.dueDate && (
           <div className="detail-date">
             🗓 <span style={{ textTransform: 'capitalize' }}>{formatDate(note.dueDate)}</span>
+          </div>
+        )}
+
+        {msConnected && (
+          <div className="detail-outlook">
+            {outlookStatus === 'idle' && (
+              <button className="outlook-btn" onClick={handleSendToOutlook}>
+                📅 Añadir a Outlook
+              </button>
+            )}
+            {outlookStatus === 'creating' && (
+              <span className="outlook-feedback outlook-feedback--creating">Creando evento…</span>
+            )}
+            {outlookStatus === 'success' && (
+              <span className="outlook-feedback outlook-feedback--success">✓ Evento creado en Outlook</span>
+            )}
+            {outlookStatus === 'error' && (
+              <span className="outlook-feedback outlook-feedback--error">✗ {outlookError}</span>
+            )}
           </div>
         )}
       </div>

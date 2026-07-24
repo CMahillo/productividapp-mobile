@@ -47,3 +47,38 @@ export async function fetchMicrosoftCalendarEvents(
     source: 'microsoft' as const,
   }))
 }
+
+export async function createMicrosoftCalendarEvent(
+  title: string,
+  description: string,
+  start: string,
+  end: string
+): Promise<{ success: boolean; error?: string }> {
+  const token = await getMicrosoftAccessToken()
+  if (!token) return { success: false, error: 'No hay sesión de Microsoft. Conéctala en el Calendario.' }
+
+  try {
+    const res = await fetch('https://graph.microsoft.com/v1.0/me/events', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        Prefer: 'outlook.timezone="Europe/Madrid"',
+      },
+      body: JSON.stringify({
+        subject: title,
+        body: { contentType: 'text', content: description },
+        start: { dateTime: start, timeZone: 'Europe/Madrid' },
+        end: { dateTime: end, timeZone: 'Europe/Madrid' },
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.json() as { error?: { message?: string } }
+      if (res.status === 403) return { success: false, error: 'Sin permisos de escritura. Desconecta y vuelve a conectar Microsoft Calendar.' }
+      return { success: false, error: body.error?.message ?? `Error ${res.status}` }
+    }
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: String(e) }
+  }
+}
