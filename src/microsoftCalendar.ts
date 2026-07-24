@@ -11,7 +11,7 @@ export async function fetchMicrosoftCalendarEvents(
   const params = new URLSearchParams({
     startDateTime: start.toISOString(),
     endDateTime: end.toISOString(),
-    $select: 'id,subject,start,end,isAllDay',
+    $select: 'id,subject,start,end,isAllDay,webLink',
     $top: '250',
     $orderby: 'start/dateTime',
   })
