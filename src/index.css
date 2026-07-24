@@ -432,6 +432,7 @@ body {
   transition: background 0.15s;
 }
 .outlook-btn:active { background: var(--border); }
+.outlook-btn--delete { color: #dc2626; border-color: #fca5a5; }
 
 .outlook-feedback {
   font-size: 13px;

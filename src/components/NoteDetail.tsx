@@ -144,7 +144,12 @@ export default function NoteDetail({ note, onEdit, onDelete, onToggle, onClose }
               <span className="outlook-feedback outlook-feedback--creating">Creando evento…</span>
             )}
             {outlookStatus === 'success' && (
-              <span className="outlook-feedback outlook-feedback--success">✓ Evento creado en Outlook</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="outlook-feedback outlook-feedback--success">✓ Evento creado en Outlook</span>
+                <button className="outlook-btn outlook-btn--delete" onClick={onDelete}>
+                  Eliminar nota
+                </button>
+              </div>
             )}
             {outlookStatus === 'error' && (
               <span className="outlook-feedback outlook-feedback--error">✗ {outlookError}</span>
