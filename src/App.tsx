@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { isAuthenticated, handleCallback, startAuth, logout } from './auth'
 import { handleGoogleCalendarCallback } from './googleCalendarAuth'
 import { handleMicrosoftCallback } from './microsoftAuth'
@@ -9,11 +9,20 @@ import NoteList from './components/NoteList'
 
 type AppState = 'loading' | 'login' | 'ready' | 'auth-error' | 'drive-error'
 
+const AUTO_SYNC_INTERVAL = 2 * 60 * 1000 // 2 minutos
+
 export default function App() {
   const [state, setState] = useState<AppState>('loading')
   const [notes, setNotes] = useState<Note[]>([])
+  const [deletedNoteIds, setDeletedNoteIds] = useState<string[]>([])
   const [quickItems, setQuickItems] = useState<QuickItem[]>([])
   const [syncing, setSyncing] = useState(false)
+  const notesRef = useRef<Note[]>([])
+  const deletedIdsRef = useRef<string[]>([])
+
+  // Mantener refs sincronizadas para usarlas en closures de timers/eventos
+  useEffect(() => { notesRef.current = notes }, [notes])
+  useEffect(() => { deletedIdsRef.current = deletedNoteIds }, [deletedNoteIds])
 
   useEffect(() => {
     async function init() {
@@ -35,15 +44,26 @@ export default function App() {
     init()
   }, [])
 
+  // Auto-refresh: cada 2 min + al volver a la pestaña
+  useEffect(() => {
+    if (state !== 'ready') return
+    const id = setInterval(() => loadNotes(), AUTO_SYNC_INTERVAL)
+    const handleVisibility = (): void => { if (!document.hidden) loadNotes() }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', handleVisibility) }
+  }, [state])
+
   async function loadNotes() {
+    if (syncing) return
     setSyncing(true)
     try {
       const [data, qItems] = await Promise.all([readNotes(), readQuickItems()])
       if (data === null) { setState('drive-error'); return }
-      setNotes(data)
+      setNotes(data.notes)
+      setDeletedNoteIds(data.deletedNoteIds)
       setQuickItems(qItems ?? [])
       setState('ready')
-      requestNotificationPermission().then(ok => { if (ok) scheduleNotifications(data) })
+      requestNotificationPermission().then(ok => { if (ok) scheduleNotifications(data.notes) })
     } catch (e) {
       console.error('[drive]', e)
       setState('drive-error')
@@ -53,9 +73,18 @@ export default function App() {
   }
 
   async function saveNotes(updated: Note[]) {
+    // Detectar qué IDs desaparecieron entre el estado actual y el nuevo
+    const prevIds = new Set(notesRef.current.map(n => n.id))
+    const newIds = new Set(updated.map(n => n.id))
+    const justDeleted = [...prevIds].filter(id => !newIds.has(id))
+    const allDeleted = justDeleted.length > 0
+      ? [...new Set([...deletedIdsRef.current, ...justDeleted])]
+      : deletedIdsRef.current
+
     setNotes(updated)
+    if (justDeleted.length > 0) setDeletedNoteIds(allDeleted)
     scheduleNotifications(updated)
-    await writeNotes(updated)
+    await writeNotes(updated, allDeleted)
   }
 
   if (state === 'loading') return (

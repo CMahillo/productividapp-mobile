@@ -42,16 +42,22 @@ async function findFileId(folderId: string, fileName: string): Promise<string | 
   return data.files[0]?.id ?? null
 }
 
-export async function readNotes(): Promise<Note[] | null> {
+export type DriveNotesPayload = { notes: Note[]; deletedNoteIds: string[] }
+
+export async function readNotes(): Promise<DriveNotesPayload | null> {
   const folderId = await getOrCreateFolder()
   if (!folderId) return null
 
   const fileId = await findFileId(folderId, NOTES_FILE)
-  if (!fileId) return []
+  if (!fileId) return { notes: [], deletedNoteIds: [] }
 
   const res = await apiFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`)
   if (!res.ok) return null
-  return res.json() as Promise<Note[]>
+  const raw = await res.json()
+  // Migración: formato antiguo era Note[] directo
+  if (Array.isArray(raw)) return { notes: raw as Note[], deletedNoteIds: [] }
+  const payload = raw as DriveNotesPayload
+  return { notes: payload.notes ?? [], deletedNoteIds: payload.deletedNoteIds ?? [] }
 }
 
 export async function readQuickItems(): Promise<QuickItem[] | null> {
@@ -66,12 +72,12 @@ export async function readQuickItems(): Promise<QuickItem[] | null> {
   return res.json() as Promise<QuickItem[]>
 }
 
-export async function writeNotes(notes: Note[]): Promise<boolean> {
+export async function writeNotes(notes: Note[], deletedNoteIds: string[]): Promise<boolean> {
   const folderId = await getOrCreateFolder()
   if (!folderId) return false
 
   const fileId = await findFileId(folderId, NOTES_FILE)
-  const content = JSON.stringify(notes, null, 2)
+  const content = JSON.stringify({ notes, deletedNoteIds }, null, 2)
   const metadata = fileId ? { name: NOTES_FILE } : { name: NOTES_FILE, parents: [folderId] }
 
   const boundary = 'pb_boundary_314159'
