@@ -20,6 +20,7 @@ interface Column {
   notes: Note[]
   canDrop: boolean
   canAdd: boolean
+  alwaysShow?: boolean
   defaultLabel?: string
   defaultDueDate?: string
 }
@@ -79,6 +80,7 @@ function buildDateColumns(notes: Note[]): Column[] {
   const now = new Date()
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
   const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999)
+  const tomorrowEnd = new Date(todayEnd); tomorrowEnd.setDate(tomorrowEnd.getDate() + 1)
   const weekEnd = new Date(todayEnd); weekEnd.setDate(weekEnd.getDate() + 6)
   const visible = notes.filter(n => !n.hidden)
 
@@ -96,12 +98,22 @@ function buildDateColumns(notes: Note[]): Column[] {
       notes: visible.filter(n => n.dueDate && new Date(n.dueDate) >= todayStart && new Date(n.dueDate) <= todayEnd),
       canDrop: true,
       canAdd: true,
+      alwaysShow: true,
       defaultDueDate: todayAt9()
+    },
+    {
+      id: '_tomorrow',
+      label: '🌅 Mañana',
+      notes: visible.filter(n => n.dueDate && new Date(n.dueDate) > todayEnd && new Date(n.dueDate) <= tomorrowEnd),
+      canDrop: true,
+      canAdd: true,
+      alwaysShow: true,
+      defaultDueDate: inDays(1)
     },
     {
       id: '_week',
       label: '📆 Esta semana',
-      notes: visible.filter(n => n.dueDate && new Date(n.dueDate) > todayEnd && new Date(n.dueDate) <= weekEnd),
+      notes: visible.filter(n => n.dueDate && new Date(n.dueDate) > tomorrowEnd && new Date(n.dueDate) <= weekEnd),
       canDrop: true,
       canAdd: true,
       defaultDueDate: inDays(2)
@@ -122,7 +134,7 @@ function buildDateColumns(notes: Note[]): Column[] {
       canAdd: true
     }
   ]
-  return cols.filter(c => c.notes.length > 0)
+  return cols.filter(c => c.notes.length > 0 || c.alwaysShow)
 }
 
 function BoardNoteCard({ note, onTap, onDelete }: { note: Note; onTap: () => void; onDelete: () => void }) {
@@ -374,6 +386,8 @@ export default function BoardView({ notes, onSave }: Props) {
         updated = copy
       } else if (colId === '_today') {
         updated = { ...note, dueDate: todayAt9() }
+      } else if (colId === '_tomorrow') {
+        updated = { ...note, dueDate: inDays(1) }
       } else if (colId === '_week') {
         updated = { ...note, dueDate: inDays(2) }
       } else {
