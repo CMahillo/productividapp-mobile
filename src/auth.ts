@@ -1,6 +1,11 @@
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string
-const REDIRECT_URI = 'https://cmahillo.github.io/productividapp-mobile/'
+const IS_CAPACITOR = import.meta.env.VITE_IS_CAPACITOR === 'true'
+// In Capacitor (Android), redirect to https://localhost/ so the callback lands in the same
+// WebView origin and localStorage.getItem('pkce_v') works without cross-origin tricks.
+const REDIRECT_URI = IS_CAPACITOR
+  ? 'https://localhost/'
+  : 'https://cmahillo.github.io/productividapp-mobile/'
 const SCOPE = 'https://www.googleapis.com/auth/drive'
 
 interface Tokens {
@@ -55,7 +60,7 @@ async function refreshAccessToken(refreshToken: string): Promise<string | null> 
 
 export async function startAuth(): Promise<void> {
   const { verifier, challenge } = await generatePKCE()
-  localStorage.setItem('pkce_v', verifier)  // sessionStorage se pierde al redirigir en móvil
+  localStorage.setItem('pkce_v', verifier)
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
@@ -64,14 +69,16 @@ export async function startAuth(): Promise<void> {
     code_challenge: challenge,
     code_challenge_method: 'S256',
     access_type: 'offline',
-    prompt: 'consent'
+    prompt: 'consent',
   })
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
 export async function handleCallback(): Promise<boolean> {
-  const code = new URLSearchParams(window.location.search).get('code')
+  const urlParams = new URLSearchParams(window.location.search)
+  const code = urlParams.get('code')
   const verifier = localStorage.getItem('pkce_v')
+
   if (!code || !verifier) {
     const debug = { step: 'check', had_code: !!code, had_verifier: !!verifier }
     console.error('[auth] Missing code or verifier', debug)
