@@ -501,7 +501,6 @@ body {
   width: 42%;
   min-width: 150px;
   border-left-color: var(--border);
-  overflow-y: auto;
 }
 
 .cal-panel-toggle {
@@ -783,8 +782,20 @@ body {
   background: #4285F4;
 }
 
+/* Número de items (notas + eventos) del día, junto a las bolitas */
+.cal-day-count {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text2);
+  margin-left: 1px;
+  flex-shrink: 0;
+}
+
 .cal-day.selected .cal-dot { background: rgba(255,255,255,.85); }
 .cal-day.selected .cal-dot--event { background: rgba(255,255,255,.75); }
+.cal-day.selected .cal-day-count { color: #fff; }
+.cal-day.today:not(.selected) .cal-day-count { color: #F59E0B; }
 
 /* Calendar event rows (read-only, no hover) */
 .cal-evt-row {
@@ -865,13 +876,21 @@ a.cal-evt-row {
   font-weight: 500;
 }
 
+/* Panel lateral del día: scroll vertical propio cuando hay más notas y
+   eventos de los que caben. min-height:0 es imprescindible, si no el item
+   flex nunca se encoge por debajo de su contenido y no llega a scrollear. */
 .cal-events {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 12px 10px 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+.cal-events > * { flex-shrink: 0; }
 
 .cal-events-title {
   font-size: 14px;
@@ -1291,12 +1310,15 @@ a.cal-evt-row {
   background: rgba(99,102,241,.18);
 }
 
+/* Scroll en los dos ejes: horizontal entre columnas y vertical dentro del
+   tablero completo (antes cada columna scrolleaba por separado). */
 .board-scroll {
   flex: 1;
   display: flex;
+  align-items: flex-start;
   gap: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 12px 16px;
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x proximity;
@@ -1310,16 +1332,24 @@ a.cal-evt-row {
   flex-direction: column;
   gap: 6px;
   scroll-snap-align: start;
-  height: 100%;
+  /* Al menos toda la altura visible (para poder soltar notas en columnas
+     cortas), pero crece con el contenido y arrastra el scroll vertical. */
+  height: auto;
+  min-height: 100%;
 }
 
+/* Se queda pegada arriba al desplazar el tablero en vertical */
 .board-col-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 2px 2px 4px;
+  padding: 4px 2px;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
 }
 
 .board-col-title {
@@ -1348,16 +1378,15 @@ a.cal-evt-row {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* Sin scroll propio: el scroll vertical lo lleva .board-scroll */
+  overflow: visible;
   padding: 6px;
   border-radius: 12px;
   background: rgba(255,255,255,.03);
   border: 2px solid transparent;
   transition: background .15s, border-color .15s;
-  -webkit-overflow-scrolling: touch;
 }
-.board-col-body::-webkit-scrollbar { display: none; }
+.board-col-body > * { flex-shrink: 0; }
 .board-col-body.drop-over {
   background: rgba(99,102,241,.1);
   border-color: var(--accent);

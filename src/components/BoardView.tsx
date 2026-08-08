@@ -184,7 +184,10 @@ function BoardNoteCard({ note, onTap, onDelete }: { note: Note; onTap: () => voi
 
   const style: React.CSSProperties = {
     background: note.color,
-    touchAction: 'pan-y',
+    // 'manipulation' deja que el navegador desplace en AMBOS ejes mientras no
+    // se cumpla el delay del TouchSensor. Con 'pan-y' el arrastre horizontal
+    // sobre una nota no movía el tablero.
+    touchAction: 'manipulation',
     ...(transform
       ? { transform: `translate3d(${transform.x}px,${transform.y}px,0)`, zIndex: 999, opacity: 0.9 }
       : {})

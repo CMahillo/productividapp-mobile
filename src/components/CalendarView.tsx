@@ -110,7 +110,10 @@ function DraggableCalNote({ note, onTap }: { note: Note; onTap: () => void }) {
     <button
       ref={setNodeRef}
       className={`event-row${isDragging ? ' cal-dragging' : ''}`}
-      style={{ touchAction: 'none' }}
+      // 'none' bloqueaba TODO gesto táctil sobre la fila, así que el panel del
+      // día no se podía desplazar. Con 'manipulation' el navegador desplaza
+      // hasta que se cumple el delay del TouchSensor (200 ms) y arranca el drag.
+      style={{ touchAction: 'manipulation' }}
       {...attributes}
       {...listeners}
       onClick={onTap}
@@ -268,16 +271,8 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
     return notesWithDate.filter(n => sameDay(new Date(n.dueDate!), d))
   }
 
-  function hasDot(d: Date): boolean {
-    return notesWithDate.some(n => sameDay(new Date(n.dueDate!), d))
-  }
-
   function eventsForDay(d: Date): CalendarEvent[] {
     return calEvents.filter(ev => eventOnDay(ev, d))
-  }
-
-  function hasCalDot(d: Date): boolean {
-    return calEvents.some(ev => eventOnDay(ev, d))
   }
 
   const connectGoogleCalendar = () => { startGoogleCalendarAuth() }
@@ -408,8 +403,11 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
                 const dateKey = toDateKey(date)
                 const isToday = sameDay(date, today)
                 const isSel = sameDay(date, selected)
-                const dot = hasDot(date)
-                const calDot = hasCalDot(date)
+                const noteCount = notesForDay(date).length
+                const eventCount = eventsForDay(date).length
+                const totalCount = noteCount + eventCount
+                const dot = noteCount > 0
+                const calDot = eventCount > 0
                 return (
                   <DroppableDay key={day} dateKey={dateKey} className="cal-day-droppable">
                     <button
@@ -424,6 +422,9 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
                       <span className="cal-dots-row">
                         {dot && <span className="cal-dot" />}
                         {calDot && <span className="cal-dot cal-dot--event" />}
+                        {totalCount > 0 && (
+                          <span className="cal-day-count">{totalCount}</span>
+                        )}
                       </span>
                     </button>
                   </DroppableDay>
