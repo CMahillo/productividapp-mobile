@@ -1,3 +1,5 @@
+import { Preferences } from '@capacitor/preferences'
+
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string
 const REDIRECT_URI = 'https://cmahillo.github.io/productividapp-mobile/'
@@ -8,6 +10,11 @@ interface Tokens {
   refresh_token: string
   expires_at: number
 }
+
+// In-memory cache loaded at startup via initAuth().
+// Preferences (Android SharedPreferences) persists across process restarts;
+// localStorage does not survive when Android kills and recreates the WebView.
+let _tokens: Tokens | null = null
 
 function base64url(buf: ArrayBuffer): string {
   return btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -21,16 +28,24 @@ async function generatePKCE(): Promise<{ verifier: string; challenge: string }> 
   return { verifier, challenge: base64url(hash) }
 }
 
-export function getTokens(): Tokens | null {
-  try { return JSON.parse(localStorage.getItem('g_tokens') ?? 'null') } catch { return null }
+// Load tokens from persistent storage into the in-memory cache.
+// Must be called once at app startup before any auth checks.
+export async function initAuth(): Promise<void> {
+  const { value } = await Preferences.get({ key: 'g_tokens' })
+  try { _tokens = value ? JSON.parse(value) as Tokens : null } catch { _tokens = null }
 }
 
-function saveTokens(t: Tokens): void {
-  localStorage.setItem('g_tokens', JSON.stringify(t))
+export function getTokens(): Tokens | null {
+  return _tokens
+}
+
+async function saveTokens(t: Tokens): Promise<void> {
+  _tokens = t
+  await Preferences.set({ key: 'g_tokens', value: JSON.stringify(t) })
 }
 
 export function isAuthenticated(): boolean {
-  return !!getTokens()?.refresh_token
+  return !!_tokens?.refresh_token
 }
 
 export async function getAccessToken(): Promise<string | null> {
@@ -46,10 +61,10 @@ async function refreshAccessToken(refreshToken: string): Promise<string | null> 
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: 'refresh_token', refresh_token: refreshToken })
   })
-  if (!res.ok) { localStorage.removeItem('g_tokens'); return null }
+  if (!res.ok) { await logout(); return null }
   const data = await res.json() as { access_token: string; expires_in: number }
   const updated: Tokens = { ...getTokens()!, access_token: data.access_token, expires_at: Date.now() + data.expires_in * 1000 }
-  saveTokens(updated)
+  await saveTokens(updated)
   return data.access_token
 }
 
@@ -110,12 +125,13 @@ export async function handleCallback(): Promise<boolean> {
   }
 
   const data = await res.json() as { access_token: string; refresh_token: string; expires_in: number }
-  saveTokens({ access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Date.now() + data.expires_in * 1000 })
+  await saveTokens({ access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Date.now() + data.expires_in * 1000 })
   localStorage.removeItem('pkce_v')
   window.history.replaceState({}, '', window.location.pathname)
   return true
 }
 
-export function logout(): void {
-  localStorage.removeItem('g_tokens')
+export async function logout(): Promise<void> {
+  _tokens = null
+  await Preferences.remove({ key: 'g_tokens' })
 }

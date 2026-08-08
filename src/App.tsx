@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { isAuthenticated, handleCallback, startAuth, logout } from './auth'
+import { initAuth, isAuthenticated, handleCallback, startAuth, logout } from './auth'
 import { handleGoogleCalendarCallback } from './googleCalendarAuth'
 import { handleMicrosoftCallback } from './microsoftAuth'
 import { readNotes, writeNotes, readQuickItems } from './drive'
@@ -26,6 +26,7 @@ export default function App() {
 
   useEffect(() => {
     async function init() {
+      await initAuth()
       if (window.location.search.includes('code=')) {
         const urlState = new URLSearchParams(window.location.search).get('state')
         if (urlState === 'ms') {
@@ -119,7 +120,7 @@ export default function App() {
       <div className="screen-center" style={{ gap: 12 }}>
         <p style={{ color: '#f87171' }}>Error de autenticación</p>
         <pre style={{ color: '#9ca3af', fontSize: 11, background: '#1f2937', padding: 12, borderRadius: 8, maxWidth: '90vw', whiteSpace: 'pre-wrap', wordBreak: 'break-all', textAlign: 'left' }}>{debug}</pre>
-        <button className="btn-secondary" onClick={() => { logout(); setState('login') }}>
+        <button className="btn-secondary" onClick={() => { void logout(); setState('login') }}>
           Intentar de nuevo
         </button>
       </div>
@@ -130,7 +131,7 @@ export default function App() {
     <div className="screen-center">
       <p style={{ color: '#f87171', marginBottom: 8 }}>Error al acceder a Google Drive</p>
       <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 16 }}>Comprueba que la app tiene permiso de Drive</p>
-      <button className="btn-secondary" onClick={() => { logout(); setState('login') }}>
+      <button className="btn-secondary" onClick={() => { void logout(); setState('login') }}>
         Volver al inicio
       </button>
     </div>
@@ -143,7 +144,7 @@ export default function App() {
       syncing={syncing}
       onSave={saveNotes}
       onSync={loadNotes}
-      onLogout={() => { logout(); setState('login') }}
+      onLogout={() => { void logout(); setState('login') }}
     />
   )
 }
