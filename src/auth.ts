@@ -71,11 +71,26 @@ export async function startAuth(): Promise<void> {
 }
 
 export async function handleCallback(): Promise<boolean> {
-  const code = new URLSearchParams(window.location.search).get('code')
-  const verifier = localStorage.getItem('pkce_v')
+  const params = new URLSearchParams(window.location.search)
+  const code = params.get('code')
+  const state = params.get('state')
+
+  // Primary: get verifier from localStorage
+  let verifier = localStorage.getItem('pkce_v')
+
+  // Fallback: recover verifier from state param (startAuth set state = btoa(verifier) without padding)
+  // Needed when Android WebView's loadUrl() resets localStorage context across navigations
+  if (!verifier && state) {
+    try {
+      const pad = '='.repeat((4 - (state.length % 4)) % 4)
+      verifier = atob(state + pad)
+    } catch {
+      // ignore decode errors
+    }
+  }
 
   if (!code || !verifier) {
-    const debug = { step: 'check', had_code: !!code, had_verifier: !!verifier }
+    const debug = { step: 'check', had_code: !!code, had_verifier: !!verifier, had_state: !!state }
     console.error('[auth] Missing code or verifier', debug)
     localStorage.setItem('auth_last_error', JSON.stringify(debug))
     return false
