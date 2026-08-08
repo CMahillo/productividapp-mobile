@@ -2,8 +2,6 @@ const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string
 const REDIRECT_URI = 'https://cmahillo.github.io/productividapp-mobile/'
 const SCOPE = 'https://www.googleapis.com/auth/drive'
-const IS_CAPACITOR = import.meta.env.VITE_IS_CAPACITOR === 'true'
-const CAP_STATE_PREFIX = 'cap1:'
 
 interface Tokens {
   access_token: string
@@ -58,11 +56,6 @@ async function refreshAccessToken(refreshToken: string): Promise<string | null> 
 export async function startAuth(): Promise<void> {
   const { verifier, challenge } = await generatePKCE()
   localStorage.setItem('pkce_v', verifier)
-  // In Capacitor (Android), the OAuth redirect goes to GitHub Pages (different origin).
-  // Encode the verifier in state with prefix so handleCallback can recover it cross-origin.
-  const state = IS_CAPACITOR
-    ? CAP_STATE_PREFIX + btoa(verifier).replace(/=/g, '')
-    : btoa(verifier).replace(/=/g, '')
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
@@ -72,22 +65,14 @@ export async function startAuth(): Promise<void> {
     code_challenge_method: 'S256',
     access_type: 'offline',
     prompt: 'consent',
-    state,
+    state: btoa(verifier).replace(/=/g, ''),
   })
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
 export async function handleCallback(): Promise<boolean> {
-  const urlParams = new URLSearchParams(window.location.search)
-  const code = urlParams.get('code')
-  const stateParam = urlParams.get('state') ?? ''
-  const isCapacitorCallback = stateParam.startsWith(CAP_STATE_PREFIX)
-
-  // Web: verifier in localStorage (same origin). Android: verifier in state param (cross-origin).
-  let verifier = localStorage.getItem('pkce_v')
-  if (!verifier && isCapacitorCallback) {
-    try { verifier = atob(stateParam.slice(CAP_STATE_PREFIX.length)) } catch { /* ignore */ }
-  }
+  const code = new URLSearchParams(window.location.search).get('code')
+  const verifier = localStorage.getItem('pkce_v')
 
   if (!code || !verifier) {
     const debug = { step: 'check', had_code: !!code, had_verifier: !!verifier }
@@ -110,18 +95,9 @@ export async function handleCallback(): Promise<boolean> {
   }
 
   const data = await res.json() as { access_token: string; refresh_token: string; expires_in: number }
-  const tokens: Tokens = { access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Date.now() + data.expires_in * 1000 }
-  saveTokens(tokens)
+  saveTokens({ access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Date.now() + data.expires_in * 1000 })
   localStorage.removeItem('pkce_v')
   window.history.replaceState({}, '', window.location.pathname)
-
-  // Capacitor flow: we're at GitHub Pages. Redirect back to Capacitor app (https://localhost)
-  // with tokens in URL hash so the app can store them in its own localStorage.
-  if (isCapacitorCallback) {
-    window.location.href = 'https://localhost/#g_tokens=' + encodeURIComponent(JSON.stringify(tokens))
-    return true
-  }
-
   return true
 }
 

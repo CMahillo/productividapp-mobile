@@ -26,16 +26,6 @@ export default function App() {
 
   useEffect(() => {
     async function init() {
-      // Android Capacitor OAuth flow: tokens arrive via URL hash after cross-origin redirect
-      const hash = window.location.hash
-      if (hash.startsWith('#g_tokens=')) {
-        try {
-          const tokens = JSON.parse(decodeURIComponent(hash.slice('#g_tokens='.length)))
-          localStorage.setItem('g_tokens', JSON.stringify(tokens))
-        } catch { /* ignore malformed hash */ }
-        window.history.replaceState({}, '', window.location.pathname)
-      }
-
       if (window.location.search.includes('code=')) {
         const urlState = new URLSearchParams(window.location.search).get('state')
         if (urlState === 'ms') {
