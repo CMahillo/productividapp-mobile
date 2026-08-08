@@ -26,6 +26,18 @@ export default function App() {
 
   useEffect(() => {
     async function init() {
+      // En build Capacitor: si el WebView cargó GitHub Pages con el callback de OAuth,
+      // redirigir a https://localhost para que la app nativa reciba el código.
+      if (import.meta.env.VITE_IS_CAPACITOR === 'true' &&
+          window.location.hostname !== 'localhost') {
+        const code = new URLSearchParams(window.location.search).get('code')
+        if (code) {
+          const state = new URLSearchParams(window.location.search).get('state') ?? ''
+          window.location.href = `https://localhost/?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`
+          return
+        }
+      }
+
       await initAuth()
       if (window.location.search.includes('code=')) {
         const urlState = new URLSearchParams(window.location.search).get('state')
