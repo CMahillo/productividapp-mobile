@@ -1,10 +1,14 @@
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
-const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string
 const IS_CAPACITOR = import.meta.env.VITE_IS_CAPACITOR === 'true'
-// In Capacitor (Android), redirect to https://localhost/ so the callback lands in the same
-// WebView origin and localStorage.getItem('pkce_v') works without cross-origin tricks.
+// Capacitor uses the "installed" OAuth client (allows http://localhost without registration).
+// Web PWA uses the web client with the GitHub Pages redirect URI.
+const CLIENT_ID = (IS_CAPACITOR
+  ? import.meta.env.VITE_GOOGLE_INSTALLED_CLIENT_ID
+  : import.meta.env.VITE_GOOGLE_CLIENT_ID) as string
+const CLIENT_SECRET = (IS_CAPACITOR
+  ? import.meta.env.VITE_GOOGLE_INSTALLED_CLIENT_SECRET
+  : import.meta.env.VITE_GOOGLE_CLIENT_SECRET) as string
 const REDIRECT_URI = IS_CAPACITOR
-  ? 'https://localhost/'
+  ? 'http://localhost/'
   : 'https://cmahillo.github.io/productividapp-mobile/'
 const SCOPE = 'https://www.googleapis.com/auth/drive'
 
