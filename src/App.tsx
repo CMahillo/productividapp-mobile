@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { App as CapApp } from '@capacitor/app'
-import { initAuth, isAuthenticated, handleCallback, startAuth, logout } from './auth'
+import { Browser } from '@capacitor/browser'
+import type { PluginListenerHandle } from '@capacitor/core'
+import {
+  initAuth, isAuthenticated, handleCallback, startAuth, logout,
+  isNative, CAP_STATE_PREFIX, DEEP_LINK_SCHEME
+} from './auth'
 import { handleGoogleCalendarCallback } from './googleCalendarAuth'
 import { handleMicrosoftCallback } from './microsoftAuth'
 import { readNotes, writeNotes, readQuickItems } from './drive'
@@ -8,75 +13,129 @@ import { requestNotificationPermission, scheduleNotifications } from './notifica
 import type { Note, QuickItem } from './types'
 import NoteList from './components/NoteList'
 
-type AppState = 'loading' | 'login' | 'ready' | 'auth-error' | 'drive-error'
+type AppState = 'loading' | 'login' | 'ready' | 'auth-error' | 'drive-error' | 'relay'
 
 const AUTO_SYNC_INTERVAL = 2 * 60 * 1000 // 2 minutos
 
+/** Construye el deep link que devuelve el código de OAuth a la app nativa. */
+function buildDeepLink(code: string, state: string): string {
+  return `${DEEP_LINK_SCHEME}://callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`
+}
+
 export default function App() {
   const [state, setState] = useState<AppState>('loading')
+  const [deepLink, setDeepLink] = useState('')
   const [notes, setNotes] = useState<Note[]>([])
   const [deletedNoteIds, setDeletedNoteIds] = useState<string[]>([])
   const [quickItems, setQuickItems] = useState<QuickItem[]>([])
   const [syncing, setSyncing] = useState(false)
   const notesRef = useRef<Note[]>([])
   const deletedIdsRef = useRef<string[]>([])
+  // Evita procesar dos veces el mismo deep link (puede llegar a la vez por
+  // getLaunchUrl() en arranque en frío y por el evento appUrlOpen).
+  const handledUrls = useRef<Set<string>>(new Set())
 
   // Mantener refs sincronizadas para usarlas en closures de timers/eventos
   useEffect(() => { notesRef.current = notes }, [notes])
   useEffect(() => { deletedIdsRef.current = deletedNoteIds }, [deletedNoteIds])
 
   useEffect(() => {
-    // Registrar listener para el custom URL scheme (OAuth callback via Chrome Custom Tabs)
-    if (import.meta.env.VITE_IS_CAPACITOR === 'true') {
-      void CapApp.addListener('appUrlOpen', async (event) => {
-        try {
-          const url = new URL(event.url)
-          if (url.hostname === 'callback') {
-            const code = url.searchParams.get('code')
-            const state = url.searchParams.get('state')
-            if (code) {
-              window.history.replaceState({}, '', `/?code=${code}&state=${state ?? ''}`)
-              const ok = await handleCallback()
-              if (ok) {
-                await loadNotes()
-              } else {
-                setState('auth-error')
-              }
-            }
-          }
-        } catch (e) {
-          console.error('[appUrlOpen]', e)
-        }
-      })
+    let listener: PluginListenerHandle | null = null
+    let cancelled = false
+
+    /** Procesa `productividapp://callback?code=...&state=...` venga de donde venga. */
+    async function processDeepLink(rawUrl: string): Promise<void> {
+      if (handledUrls.current.has(rawUrl)) return
+      handledUrls.current.add(rawUrl)
+
+      let parsed: URL
+      try { parsed = new URL(rawUrl) } catch { return }
+      if (parsed.protocol !== `${DEEP_LINK_SCHEME}:`) return
+
+      const code = parsed.searchParams.get('code')
+      const cbState = parsed.searchParams.get('state') ?? ''
+      if (!code) return
+
+      // Cerrar la Custom Tab de Chrome que quedó abierta detrás.
+      try { await Browser.close() } catch { /* ya estaba cerrada */ }
+
+      // handleCallback() lee de window.location.search: se lo dejamos ahí.
+      window.history.replaceState({}, '', `/?code=${encodeURIComponent(code)}&state=${encodeURIComponent(cbState)}`)
+      const ok = await handleCallback()
+      window.history.replaceState({}, '', '/')
+
+      if (ok) await loadNotes()
+      else setState('auth-error')
     }
 
-    async function init() {
-      // Si estamos en GitHub Pages con ?code= (callback de OAuth desde Chrome Custom Tabs),
-      // redirigir al custom scheme para que Android abra la app.
-      if (window.location.hostname !== 'localhost' && window.location.search.includes('code=')) {
-        const code = new URLSearchParams(window.location.search).get('code') ?? ''
-        const state = new URLSearchParams(window.location.search).get('state') ?? ''
-        window.location.href = `productividapp://callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`
+    async function boot(): Promise<void> {
+      const query = new URLSearchParams(window.location.search)
+      const queryCode = query.get('code')
+      const queryState = query.get('state') ?? ''
+
+      // 1) Modo relé: esta página se ha abierto en Chrome (GitHub Pages) como
+      //    redirect_uri de un login lanzado DESDE la app nativa. Hay que
+      //    devolverle el código a la app por deep link. Se distingue del login
+      //    de la PWA web por el prefijo del state.
+      if (!isNative() && queryCode && queryState.startsWith(CAP_STATE_PREFIX)) {
+        const link = buildDeepLink(queryCode, queryState)
+        setDeepLink(link)
+        setState('relay')
+        // Intento automático; si Chrome lo bloquea por falta de gesto del
+        // usuario, la pantalla de relé ofrece un botón que sí lo tiene.
+        window.location.href = link
         return
       }
 
+      // 2) SIEMPRE cargar los tokens persistidos antes de comprobar la sesión.
       await initAuth()
-      if (window.location.search.includes('code=')) {
-        const urlState = new URLSearchParams(window.location.search).get('state')
-        if (urlState === 'ms') {
+      if (cancelled) return
+
+      // 3) Deep link del OAuth nativo (Chrome Custom Tabs -> productividapp://)
+      if (isNative()) {
+        listener = await CapApp.addListener('appUrlOpen', (event) => {
+          void processDeepLink(event.url)
+        })
+        if (cancelled) { void listener.remove(); listener = null; return }
+
+        // Arranque en frío: si Android mató el proceso mientras estábamos en la
+        // Custom Tab, el intent llega como intent de lanzamiento y NO dispara
+        // appUrlOpen. Hay que leerlo explícitamente.
+        if (!isAuthenticated()) {
+          const launch = await CapApp.getLaunchUrl()
+          if (launch?.url?.startsWith(`${DEEP_LINK_SCHEME}:`)) {
+            await processDeepLink(launch.url)
+            return
+          }
+        }
+      }
+
+      // 4) Callback OAuth clásico (PWA web, o calendarios)
+      if (queryCode) {
+        if (queryState === 'ms') {
           await handleMicrosoftCallback()
           window.history.replaceState({}, '', window.location.pathname)
-        } else if (urlState === 'g_cal') {
+        } else if (queryState === 'g_cal') {
           await handleGoogleCalendarCallback()
+          window.history.replaceState({}, '', window.location.pathname)
         } else {
           const ok = await handleCallback()
+          window.history.replaceState({}, '', window.location.pathname)
           if (!ok) { setState('auth-error'); return }
         }
       }
+
+      // 5) Sesión
       if (!isAuthenticated()) { setState('login'); return }
       await loadNotes()
     }
-    init()
+
+    void boot()
+
+    return () => {
+      cancelled = true
+      if (listener) void listener.remove()
+    }
   }, [])
 
   // Auto-refresh: cada 2 min + al volver a la pestaña
@@ -101,7 +160,9 @@ export default function App() {
       requestNotificationPermission().then(ok => { if (ok) scheduleNotifications(data.notes) })
     } catch (e) {
       console.error('[drive]', e)
-      setState('drive-error')
+      // Si el token murió de verdad, auth.logout() ya limpió la sesión: en ese
+      // caso volvemos al login en vez de dejar una pantalla de error de Drive.
+      setState(isAuthenticated() ? 'drive-error' : 'login')
     } finally {
       setSyncing(false)
     }
@@ -126,6 +187,16 @@ export default function App() {
     <div className="screen-center">
       <div className="spinner" />
       <p className="hint">Cargando...</p>
+    </div>
+  )
+
+  if (state === 'relay') return (
+    <div className="screen-center" style={{ gap: 16 }}>
+      <div className="spinner" />
+      <p className="hint">Volviendo a ProductividApp...</p>
+      <button className="btn-secondary" onClick={() => { window.location.href = deepLink }}>
+        Abrir ProductividApp
+      </button>
     </div>
   )
 
@@ -165,6 +236,9 @@ export default function App() {
     <div className="screen-center">
       <p style={{ color: '#f87171', marginBottom: 8 }}>Error al acceder a Google Drive</p>
       <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 16 }}>Comprueba que la app tiene permiso de Drive</p>
+      <button className="btn-secondary" style={{ marginBottom: 8 }} onClick={() => { void loadNotes() }}>
+        Reintentar
+      </button>
       <button className="btn-secondary" onClick={() => { void logout(); setState('login') }}>
         Volver al inicio
       </button>
