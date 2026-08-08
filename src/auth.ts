@@ -1,4 +1,5 @@
 import { Preferences } from '@capacitor/preferences'
+import { Browser } from '@capacitor/browser'
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string
@@ -82,7 +83,12 @@ export async function startAuth(): Promise<void> {
     prompt: 'consent',
     state: btoa(verifier).replace(/=/g, ''),
   })
-  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
+  if (import.meta.env.VITE_IS_CAPACITOR === 'true') {
+    await Browser.open({ url, windowName: '_self' })
+  } else {
+    window.location.href = url
+  }
 }
 
 export async function handleCallback(): Promise<boolean> {

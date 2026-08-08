@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { App as CapApp } from '@capacitor/app'
 import { initAuth, isAuthenticated, handleCallback, startAuth, logout } from './auth'
 import { handleGoogleCalendarCallback } from './googleCalendarAuth'
 import { handleMicrosoftCallback } from './microsoftAuth'
@@ -25,17 +26,38 @@ export default function App() {
   useEffect(() => { deletedIdsRef.current = deletedNoteIds }, [deletedNoteIds])
 
   useEffect(() => {
-    async function init() {
-      // En build Capacitor: si el WebView cargó GitHub Pages con el callback de OAuth,
-      // redirigir a https://localhost para que la app nativa reciba el código.
-      if (import.meta.env.VITE_IS_CAPACITOR === 'true' &&
-          window.location.hostname !== 'localhost') {
-        const code = new URLSearchParams(window.location.search).get('code')
-        if (code) {
-          const state = new URLSearchParams(window.location.search).get('state') ?? ''
-          window.location.href = `https://localhost/?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`
-          return
+    // Registrar listener para el custom URL scheme (OAuth callback via Chrome Custom Tabs)
+    if (import.meta.env.VITE_IS_CAPACITOR === 'true') {
+      void CapApp.addListener('appUrlOpen', async (event) => {
+        try {
+          const url = new URL(event.url)
+          if (url.hostname === 'callback') {
+            const code = url.searchParams.get('code')
+            const state = url.searchParams.get('state')
+            if (code) {
+              window.history.replaceState({}, '', `/?code=${code}&state=${state ?? ''}`)
+              const ok = await handleCallback()
+              if (ok) {
+                await loadNotes()
+              } else {
+                setState('auth-error')
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[appUrlOpen]', e)
         }
+      })
+    }
+
+    async function init() {
+      // Si estamos en GitHub Pages con ?code= (callback de OAuth desde Chrome Custom Tabs),
+      // redirigir al custom scheme para que Android abra la app.
+      if (window.location.hostname !== 'localhost' && window.location.search.includes('code=')) {
+        const code = new URLSearchParams(window.location.search).get('code') ?? ''
+        const state = new URLSearchParams(window.location.search).get('state') ?? ''
+        window.location.href = `productividapp://callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`
+        return
       }
 
       await initAuth()
