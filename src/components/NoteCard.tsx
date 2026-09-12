@@ -1,12 +1,9 @@
 import type { Note } from '../types'
+import { noteTitle } from '../lib/noteTitle'
 
 interface Props {
   note: Note
   onTap: () => void
-}
-
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function formatDate(iso: string): string {
@@ -17,13 +14,13 @@ function formatDate(iso: string): string {
 }
 
 export default function NoteCard({ note, onTap }: Props) {
-  const text = stripHtml(note.content)
+  const text = noteTitle(note)
 
   return (
     <button className="note-row" onClick={onTap}>
       <span className="note-row-stripe" style={{ background: note.color }} />
       <span className="note-row-body">
-        <span className="note-row-text">{text || 'Nota vacía'}</span>
+        <span className="note-row-text">{text}</span>
         {note.dueDate && (
           <span className="note-row-date">🗓 {formatDate(note.dueDate)}</span>
         )}

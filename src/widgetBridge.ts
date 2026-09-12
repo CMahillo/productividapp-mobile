@@ -9,6 +9,7 @@ import { Preferences } from '@capacitor/preferences'
 import { fetchGoogleCalendarEvents } from './googleCalendar'
 import { fetchMicrosoftCalendarEvents } from './microsoftCalendar'
 import type { Note, CalendarEvent } from './types'
+import { noteTitle } from './lib/noteTitle'
 
 /** Clave de SharedPreferences compartida con el widget nativo. */
 export const WIDGET_ITEMS_KEY = 'widget_items'
@@ -76,10 +77,6 @@ function timeLabel(date: Date, allDay: boolean): string | null {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-}
-
 /**
  * Construye la agenda del widget: 7 días (hoy → hoy+6) agrupados por día,
  * cada uno con sus items ordenados por hora. Los días sin nada se omiten.
@@ -112,7 +109,7 @@ export function buildWidgetDays(
     const allDay = d.getHours() === 0 && d.getMinutes() === 0
     push(d, daysBetween(today, d), {
       id: n.id,
-      title: stripHtml(n.content).slice(0, 80) || 'Nota vacía',
+      title: noteTitle(n).slice(0, 80),
       time: timeLabel(d, allDay),
       source: 'note',
     })

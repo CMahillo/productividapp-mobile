@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { Note, QuickItem } from '../types'
 import { refreshWidgetFromSources } from '../widgetBridge'
+import { stripHtml } from '../lib/noteTitle'
 import NoteCard from './NoteCard'
 import NoteDetail from './NoteDetail'
 import NoteEditor from './NoteEditor'
@@ -93,7 +94,11 @@ export default function NoteList({
 
   const visible = notes
     .filter(n => !n.hidden)
-    .filter(n => !query || stripHtml(n.content).toLowerCase().includes(query.toLowerCase()))
+    .filter(n => {
+      if (!query) return true
+      const haystack = `${n.title ?? ''} ${stripHtml(n.content)}`.toLowerCase()
+      return haystack.includes(query.toLowerCase())
+    })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
   const handleSave = (note: Note) => {
@@ -223,8 +228,4 @@ export default function NoteList({
       )}
     </div>
   )
-}
-
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }

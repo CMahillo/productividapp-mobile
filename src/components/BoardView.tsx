@@ -16,6 +16,7 @@ import type { Note, CalendarEvent } from '../types'
 import NoteEditor from './NoteEditor'
 import { fetchGoogleCalendarEvents } from '../googleCalendar'
 import { fetchMicrosoftCalendarEvents } from '../microsoftCalendar'
+import { stripHtml } from '../lib/noteTitle'
 
 const EVENT_PREFIX = 'event:'
 
@@ -35,10 +36,6 @@ interface Column {
   alwaysShow?: boolean
   defaultLabel?: string
   defaultDueDate?: string
-}
-
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function formatDate(iso: string): string {

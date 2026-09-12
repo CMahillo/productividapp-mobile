@@ -16,6 +16,7 @@ import { fetchGoogleCalendarEvents } from '../googleCalendar'
 import { fetchMicrosoftCalendarEvents } from '../microsoftCalendar'
 import { isGoogleCalendarAuthenticated, startGoogleCalendarAuth, logoutGoogleCalendar } from '../googleCalendarAuth'
 import { isMicrosoftAuthenticated, startMicrosoftAuth, logoutMicrosoft } from '../microsoftAuth'
+import { noteTitle } from '../lib/noteTitle'
 
 /** Periodo de recarga de eventos de calendario. */
 const CAL_RELOAD_INTERVAL = 2 * 60 * 1000
@@ -51,10 +52,6 @@ function eventOnDay(ev: CalendarEvent, d: Date): boolean {
   const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)
   const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59)
   return start <= dayEnd && end >= dayStart
-}
-
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function getMondayOf(date: Date): Date {
@@ -125,7 +122,7 @@ function DraggableCalNote({ note, onTap }: { note: Note; onTap: () => void }) {
       <span className="event-stripe" style={{ background: note.color }} />
       <span className="event-body">
         <span className="event-time">{formatTime(note.dueDate!)}</span>
-        <span className="event-text">{stripHtml(note.content) || 'Nota vacía'}</span>
+        <span className="event-text">{noteTitle(note)}</span>
       </span>
       <span className="note-row-chevron">›</span>
     </button>
@@ -571,7 +568,7 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
       <DragOverlay dropAnimation={null}>
         {activeNote && (
           <div className="cal-drag-overlay" style={{ background: activeNote.color }}>
-            {stripHtml(activeNote.content).slice(0, 45) || 'Nota vacía'}
+            {noteTitle(activeNote).slice(0, 45)}
           </div>
         )}
       </DragOverlay>

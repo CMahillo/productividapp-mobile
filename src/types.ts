@@ -1,5 +1,9 @@
 export interface Note {
   id: string
+  /** Título corto opcional. Si no está, el título se deriva de la primera
+   *  línea del contenido (ver `lib/noteTitle.ts`). Notas antiguas no lo
+   *  tienen: queda `undefined` y el fallback se encarga. */
+  title?: string
   content: string
   x: number
   y: number
