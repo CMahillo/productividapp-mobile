@@ -1,7 +1,10 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { Browser } from '@capacitor/browser'
 import {
   DndContext,
   DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
   MouseSensor,
   TouchSensor,
   useSensor,
@@ -9,15 +12,24 @@ import {
   useDraggable,
   useDroppable
 } from '@dnd-kit/core'
-import type { Note } from '../types'
+import type { Note, CalendarEvent } from '../types'
 import NoteEditor from './NoteEditor'
+import { fetchGoogleCalendarEvents } from '../googleCalendar'
+import { fetchMicrosoftCalendarEvents } from '../microsoftCalendar'
+
+const EVENT_PREFIX = 'event:'
 
 type FilterMode = 'labels' | 'dates'
+type ActiveDrag =
+  | { kind: 'note'; item: Note }
+  | { kind: 'event'; item: CalendarEvent }
+  | null
 
 interface Column {
   id: string
   label: string
   notes: Note[]
+  events: CalendarEvent[]
   canDrop: boolean
   canAdd: boolean
   alwaysShow?: boolean
@@ -51,7 +63,27 @@ function inDays(n: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T09:00:00`
 }
 
-function buildLabelColumns(notes: Note[]): Column[] {
+function getEventDate(ev: CalendarEvent): Date {
+  // All-day events from Google arrive as "YYYY-MM-DD" — parse as local midnight
+  if (ev.allDay && ev.start.length === 10) return new Date(ev.start + 'T00:00:00')
+  return new Date(ev.start)
+}
+
+function eventToDueDate(ev: CalendarEvent): string {
+  const d = getEventDate(ev)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const base = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  if (ev.allDay) return `${base}T09:00:00`
+  return `${base}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`
+}
+
+function formatEventTime(ev: CalendarEvent): string {
+  if (ev.allDay) return 'Todo el día'
+  const d = getEventDate(ev)
+  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+}
+
+function buildLabelColumns(notes: Note[], calEvents: CalendarEvent[], convertedIds: Set<string>): Column[] {
   const labels = [...new Set(
     notes.filter(n => !n.hidden && n.label).map(n => n.label as string)
   )]
@@ -59,6 +91,7 @@ function buildLabelColumns(notes: Note[]): Column[] {
     id: `label:${l}`,
     label: l,
     notes: notes.filter(n => !n.hidden && n.label === l),
+    events: [],
     canDrop: true,
     canAdd: true,
     defaultLabel: l
@@ -69,14 +102,31 @@ function buildLabelColumns(notes: Note[]): Column[] {
       id: 'label:__none',
       label: 'Sin etiqueta',
       notes: unlabeled,
+      events: [],
       canDrop: true,
       canAdd: true
     })
   }
+
+  const pendingEvents = calEvents
+    .filter(e => !convertedIds.has(e.id))
+    .sort((a, b) => getEventDate(a).getTime() - getEventDate(b).getTime())
+
+  if (pendingEvents.length > 0) {
+    cols.unshift({
+      id: '_events',
+      label: '📅 Eventos',
+      notes: [],
+      events: pendingEvents,
+      canDrop: false,
+      canAdd: false
+    })
+  }
+
   return cols
 }
 
-function buildDateColumns(notes: Note[]): Column[] {
+function buildDateColumns(notes: Note[], calEvents: CalendarEvent[]): Column[] {
   const now = new Date()
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
   const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999)
@@ -84,11 +134,18 @@ function buildDateColumns(notes: Note[]): Column[] {
   const weekEnd = new Date(todayEnd); weekEnd.setDate(weekEnd.getDate() + 6)
   const visible = notes.filter(n => !n.hidden)
 
+  const eventsIn = (from: Date | null, to: Date | null) =>
+    calEvents.filter(ev => {
+      const d = getEventDate(ev)
+      return (!from || d >= from) && (!to || d <= to)
+    }).sort((a, b) => getEventDate(a).getTime() - getEventDate(b).getTime())
+
   const cols: Column[] = [
     {
       id: '_overdue',
       label: '⚠️ Vencidas',
       notes: visible.filter(n => n.dueDate && new Date(n.dueDate) < todayStart),
+      events: eventsIn(null, new Date(todayStart.getTime() - 1)),
       canDrop: false,
       canAdd: false
     },
@@ -96,6 +153,7 @@ function buildDateColumns(notes: Note[]): Column[] {
       id: '_today',
       label: '📅 Hoy',
       notes: visible.filter(n => n.dueDate && new Date(n.dueDate) >= todayStart && new Date(n.dueDate) <= todayEnd),
+      events: eventsIn(todayStart, todayEnd),
       canDrop: true,
       canAdd: true,
       alwaysShow: true,
@@ -105,6 +163,7 @@ function buildDateColumns(notes: Note[]): Column[] {
       id: '_tomorrow',
       label: '🌅 Mañana',
       notes: visible.filter(n => n.dueDate && new Date(n.dueDate) > todayEnd && new Date(n.dueDate) <= tomorrowEnd),
+      events: eventsIn(new Date(todayEnd.getTime() + 1), tomorrowEnd),
       canDrop: true,
       canAdd: true,
       alwaysShow: true,
@@ -114,6 +173,7 @@ function buildDateColumns(notes: Note[]): Column[] {
       id: '_week',
       label: '📆 Esta semana',
       notes: visible.filter(n => n.dueDate && new Date(n.dueDate) > tomorrowEnd && new Date(n.dueDate) <= weekEnd),
+      events: eventsIn(new Date(tomorrowEnd.getTime() + 1), weekEnd),
       canDrop: true,
       canAdd: true,
       defaultDueDate: inDays(2)
@@ -122,6 +182,7 @@ function buildDateColumns(notes: Note[]): Column[] {
       id: '_later',
       label: '🔮 Más adelante',
       notes: visible.filter(n => n.dueDate && new Date(n.dueDate) > weekEnd),
+      events: eventsIn(new Date(weekEnd.getTime() + 1), null),
       canDrop: true,
       canAdd: true,
       defaultDueDate: inDays(14)
@@ -130,12 +191,86 @@ function buildDateColumns(notes: Note[]): Column[] {
       id: '_nodate',
       label: '🗒 Sin fecha',
       notes: visible.filter(n => !n.dueDate),
+      events: [],
       canDrop: true,
       canAdd: true
     }
   ]
-  return cols.filter(c => c.notes.length > 0 || c.alwaysShow)
+  return cols.filter(c => c.notes.length > 0 || c.events.length > 0 || c.alwaysShow)
 }
+
+// ── Event card (draggable only in labels mode) ────────────────────────────────
+
+function EventCard({
+  event,
+  draggable,
+  onLongPress
+}: {
+  event: CalendarEvent
+  draggable: boolean
+  onLongPress: (pos: { x: number; y: number }) => void
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `${EVENT_PREFIX}${event.id}`,
+    disabled: !draggable
+  })
+
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pointerPos = useRef<{ x: number; y: number } | null>(null)
+  const didLongPress = useRef(false)
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null }
+  }
+
+  const { onPointerDown: dndPointerDown, ...restListeners } = (listeners ?? {}) as {
+    onPointerDown?: React.PointerEventHandler<HTMLDivElement>
+    [key: string]: unknown
+  }
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    didLongPress.current = false
+    pointerPos.current = { x: e.clientX, y: e.clientY }
+    longPressTimer.current = setTimeout(() => {
+      didLongPress.current = true
+      onLongPress({ x: e.clientX, y: e.clientY })
+    }, 500)
+    dndPointerDown?.(e)
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (pointerPos.current && longPressTimer.current) {
+      const dx = Math.abs(e.clientX - pointerPos.current.x)
+      const dy = Math.abs(e.clientY - pointerPos.current.y)
+      if (dx > 8 || dy > 8) cancelLongPress()
+    }
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`event-card${isDragging ? ' dragging' : ''}${draggable ? ' event-card--draggable' : ''}`}
+      style={{ opacity: isDragging ? 0 : 1, touchAction: 'manipulation' }}
+      {...(draggable ? { ...attributes, ...restListeners } : {})}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onContextMenu={(e) => { e.preventDefault(); cancelLongPress(); didLongPress.current = true; onLongPress({ x: e.clientX, y: e.clientY }) }}
+    >
+      <div className="event-card-header">
+        <span className="event-card-source">
+          {event.source === 'google' ? 'Google' : 'Outlook'}
+        </span>
+      </div>
+      <div className="event-card-title">{event.title}</div>
+      <div className="event-card-time">{formatEventTime(event)}</div>
+      {draggable && <div className="event-card-hint">Arrastra a una categoría</div>}
+    </div>
+  )
+}
+
+// ── Note card ─────────────────────────────────────────────────────────────────
 
 function BoardNoteCard({ note, onTap, onDelete }: { note: Note; onTap: () => void; onDelete: () => void }) {
   const [showMenu, setShowMenu] = useState(false)
@@ -143,7 +278,7 @@ function BoardNoteCard({ note, onTap, onDelete }: { note: Note; onTap: () => voi
   const pointerPos = useRef<{ x: number; y: number } | null>(null)
   const didLongPress = useRef(false)
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: note.id,
     disabled: showMenu
   })
@@ -184,13 +319,8 @@ function BoardNoteCard({ note, onTap, onDelete }: { note: Note; onTap: () => voi
 
   const style: React.CSSProperties = {
     background: note.color,
-    // 'manipulation' deja que el navegador desplace en AMBOS ejes mientras no
-    // se cumpla el delay del TouchSensor. Con 'pan-y' el arrastre horizontal
-    // sobre una nota no movía el tablero.
     touchAction: 'manipulation',
-    ...(transform
-      ? { transform: `translate3d(${transform.x}px,${transform.y}px,0)`, zIndex: 999, opacity: 0.9 }
-      : {})
+    ...(isDragging ? { opacity: 0 } : {})
   }
 
   return (
@@ -244,11 +374,15 @@ function BoardNoteCard({ note, onTap, onDelete }: { note: Note; onTap: () => voi
   )
 }
 
+// ── Column ────────────────────────────────────────────────────────────────────
+
 function BoardColumn({
   col,
+  mode,
   onAdd,
   onNoteTap,
   onNoteDelete,
+  onEventLongPress,
   reorderMode,
   onMoveLeft,
   onMoveRight,
@@ -256,9 +390,11 @@ function BoardColumn({
   isLast
 }: {
   col: Column
+  mode: FilterMode
   onAdd: () => void
   onNoteTap: (note: Note) => void
   onNoteDelete: (note: Note) => void
+  onEventLongPress: (ev: CalendarEvent, pos: { x: number; y: number }) => void
   reorderMode: boolean
   onMoveLeft: () => void
   onMoveRight: () => void
@@ -266,6 +402,7 @@ function BoardColumn({
   isLast: boolean
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id, disabled: !col.canDrop })
+  const totalCount = col.notes.length + col.events.length
 
   return (
     <div className="board-col">
@@ -279,7 +416,7 @@ function BoardColumn({
           >◀</button>
         )}
         <span className="board-col-title">{col.label}</span>
-        <span className="board-col-count">{col.notes.length}</span>
+        <span className="board-col-count">{totalCount}</span>
         {reorderMode && (
           <button
             className="board-reorder-btn"
@@ -293,6 +430,14 @@ function BoardColumn({
         ref={setNodeRef}
         className={`board-col-body${isOver && col.canDrop ? ' drop-over' : ''}${!col.canDrop ? ' no-drop' : ''}`}
       >
+        {col.events.map(ev => (
+          <EventCard
+            key={ev.id}
+            event={ev}
+            draggable={mode === 'labels'}
+            onLongPress={(pos) => onEventLongPress(ev, pos)}
+          />
+        ))}
         {col.notes.map(note => (
           <BoardNoteCard
             key={note.id}
@@ -311,6 +456,8 @@ function BoardColumn({
   )
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 interface Props {
   notes: Note[]
   onSave: (notes: Note[]) => void
@@ -319,9 +466,21 @@ interface Props {
 type EditState = { note: Note | null; defaultLabel?: string; defaultDueDate?: string } | null
 
 export default function BoardView({ notes, onSave }: Props) {
-  const [mode, setMode] = useState<FilterMode>('labels')
+  const [mode, setMode] = useState<FilterMode>('dates')
   const [editState, setEditState] = useState<EditState>(null)
   const [reorderMode, setReorderMode] = useState(false)
+  const [activeDrag, setActiveDrag] = useState<ActiveDrag>(null)
+  const [eventMenu, setEventMenu] = useState<{ event: CalendarEvent; x: number; y: number } | null>(null)
+
+  // Calendar events state
+  const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
+  const [convertedEventIds, setConvertedEventIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('board-converted-event-ids')
+      return saved ? new Set(JSON.parse(saved) as string[]) : new Set()
+    } catch { return new Set() }
+  })
+
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('board-column-order')
@@ -329,14 +488,30 @@ export default function BoardView({ notes, onSave }: Props) {
     } catch { return [] }
   })
 
+  // Fetch calendar events from both sources on mount
+  useEffect(() => {
+    const start = new Date()
+    const end = new Date()
+    end.setDate(end.getDate() + 60)
+
+    Promise.all([
+      fetchGoogleCalendarEvents(start, end).catch(() => [] as CalendarEvent[]),
+      fetchMicrosoftCalendarEvents(start, end).catch(() => [] as CalendarEvent[]),
+    ]).then(([google, ms]) => {
+      setCalEvents([...google, ...ms])
+    })
+  }, [])
+
   const allLabels = useMemo(
     () => [...new Set(notes.filter(n => !n.hidden && n.label).map(n => n.label as string))],
     [notes]
   )
 
   const rawColumns = useMemo(
-    () => (mode === 'labels' ? buildLabelColumns(notes) : buildDateColumns(notes)),
-    [notes, mode]
+    () => mode === 'labels'
+      ? buildLabelColumns(notes, calEvents, convertedEventIds)
+      : buildDateColumns(notes, calEvents),
+    [notes, mode, calEvents, convertedEventIds]
   )
 
   const columns = useMemo(() => {
@@ -368,14 +543,53 @@ export default function BoardView({ notes, onSave }: Props) {
     useSensor(TouchSensor, { activationConstraint: { delay: 550, tolerance: 6 } })
   )
 
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    const id = active.id as string
+    if (id.startsWith(EVENT_PREFIX)) {
+      const eventId = id.slice(EVENT_PREFIX.length)
+      const ev = calEvents.find(e => e.id === eventId)
+      setActiveDrag(ev ? { kind: 'event', item: ev } : null)
+    } else {
+      const note = notes.find(n => n.id === id)
+      setActiveDrag(note ? { kind: 'note', item: note } : null)
+    }
+  }
+
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    setActiveDrag(null)
     if (!over) return
-    const noteId = active.id as string
+
+    const dragId = active.id as string
     const colId = over.id as string
-    const note = notes.find(n => n.id === noteId)
-    if (!note) return
     const col = columns.find(c => c.id === colId)
     if (!col?.canDrop) return
+
+    // Event → note conversion (labels mode only)
+    if (dragId.startsWith(EVENT_PREFIX)) {
+      if (mode !== 'labels') return
+      const eventId = dragId.slice(EVENT_PREFIX.length)
+      const ev = calEvents.find(e => e.id === eventId)
+      if (!ev) return
+      const newNote: Note = {
+        id: crypto.randomUUID(),
+        content: ev.title,
+        dueDate: eventToDueDate(ev),
+        label: col.id === 'label:__none' ? undefined : col.id.replace('label:', ''),
+        color: '#BFDBFE',
+        x: 0, y: 0, width: 200, height: 100,
+        createdAt: new Date().toISOString()
+      }
+      const newConverted = new Set([...convertedEventIds, eventId])
+      setConvertedEventIds(newConverted)
+      localStorage.setItem('board-converted-event-ids', JSON.stringify([...newConverted]))
+      onSave([...notes, newNote])
+      return
+    }
+
+    // Note drag
+    const noteId = dragId
+    const note = notes.find(n => n.id === noteId)
+    if (!note) return
 
     let updated: Note
     if (mode === 'labels') {
@@ -401,6 +615,10 @@ export default function BoardView({ notes, onSave }: Props) {
     onSave(notes.map(n => (n.id === noteId ? updated : n)))
   }
 
+  const handleEventLongPress = (ev: CalendarEvent, pos: { x: number; y: number }) => {
+    setEventMenu({ event: ev, x: pos.x, y: pos.y })
+  }
+
   const handleNoteSave = (note: Note) => {
     const idx = notes.findIndex(n => n.id === note.id)
     onSave(idx >= 0 ? notes.map((n, i) => (i === idx ? note : n)) : [...notes, note])
@@ -415,16 +633,16 @@ export default function BoardView({ notes, onSave }: Props) {
     <div className="board-wrap">
       <div className="board-filter">
         <button
-          className={`board-filter-btn${mode === 'labels' ? ' active' : ''}`}
-          onClick={() => { setMode('labels'); setReorderMode(false) }}
-        >
-          Etiquetas
-        </button>
-        <button
           className={`board-filter-btn${mode === 'dates' ? ' active' : ''}`}
           onClick={() => { setMode('dates'); setReorderMode(false) }}
         >
           Fechas
+        </button>
+        <button
+          className={`board-filter-btn${mode === 'labels' ? ' active' : ''}`}
+          onClick={() => { setMode('labels'); setReorderMode(false) }}
+        >
+          Etiquetas
         </button>
         {mode === 'labels' && (
           <button
@@ -436,17 +654,19 @@ export default function BoardView({ notes, onSave }: Props) {
         )}
       </div>
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="board-scroll">
           {columns.map((col, idx) => (
             <BoardColumn
               key={col.id}
               col={col}
+              mode={mode}
               onAdd={() =>
                 setEditState({ note: null, defaultLabel: col.defaultLabel, defaultDueDate: col.defaultDueDate })
               }
               onNoteTap={note => setEditState({ note })}
               onNoteDelete={handleNoteDelete}
+              onEventLongPress={handleEventLongPress}
               reorderMode={reorderMode}
               onMoveLeft={() => moveColumn(col.id, -1)}
               onMoveRight={() => moveColumn(col.id, 1)}
@@ -455,6 +675,29 @@ export default function BoardView({ notes, onSave }: Props) {
             />
           ))}
         </div>
+
+        <DragOverlay dropAnimation={null}>
+          {activeDrag?.kind === 'note' ? (
+            <div
+              className="board-note dragging"
+              style={{ background: activeDrag.item.color, touchAction: 'none' }}
+            >
+              <div className="board-note-text">{stripHtml(activeDrag.item.content) || 'Nota vacía'}</div>
+              {activeDrag.item.dueDate && <div className="board-note-date">🗓 {formatDate(activeDrag.item.dueDate)}</div>}
+              {activeDrag.item.label && <div className="board-note-chip">{activeDrag.item.label}</div>}
+            </div>
+          ) : activeDrag?.kind === 'event' ? (
+            <div className="event-card dragging" style={{ touchAction: 'none' }}>
+              <div className="event-card-header">
+                <span className="event-card-source">
+                  {activeDrag.item.source === 'google' ? 'Google' : 'Outlook'}
+                </span>
+              </div>
+              <div className="event-card-title">{activeDrag.item.title}</div>
+              <div className="event-card-time">{formatEventTime(activeDrag.item)}</div>
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       {editState !== null && (
@@ -466,6 +709,59 @@ export default function BoardView({ notes, onSave }: Props) {
           onSave={handleNoteSave}
           onClose={() => setEditState(null)}
         />
+      )}
+
+      {eventMenu && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 998 }}
+            onClick={() => setEventMenu(null)}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              zIndex: 999,
+              left: Math.min(eventMenu.x, window.innerWidth - 190),
+              top: Math.min(eventMenu.y, window.innerHeight - 90),
+              background: 'var(--bg-card, #1e293b)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 12,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+              padding: '4px 0',
+              minWidth: 176,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                padding: '13px 16px',
+                background: 'none',
+                border: 'none',
+                color: 'var(--text, #f1f5f9)',
+                fontSize: 14,
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+              onClick={async () => {
+                const ev = eventMenu.event
+                setEventMenu(null)
+                let url = ev.webLink
+                if (!url) {
+                  url = ev.source === 'google'
+                    ? 'https://calendar.google.com/calendar/r'
+                    : 'https://outlook.office.com/calendar/view/month'
+                }
+                await Browser.open({ url })
+              }}
+            >
+              📅 Ir al evento
+            </button>
+          </div>
+        </>
       )}
     </div>
   )

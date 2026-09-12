@@ -17,6 +17,9 @@ import { fetchMicrosoftCalendarEvents } from '../microsoftCalendar'
 import { isGoogleCalendarAuthenticated, startGoogleCalendarAuth, logoutGoogleCalendar } from '../googleCalendarAuth'
 import { isMicrosoftAuthenticated, startMicrosoftAuth, logoutMicrosoft } from '../microsoftAuth'
 
+/** Periodo de recarga de eventos de calendario. */
+const CAL_RELOAD_INTERVAL = 2 * 60 * 1000
+
 interface Props {
   notes: Note[]
   onNoteSelect: (note: Note) => void
@@ -110,10 +113,11 @@ function DraggableCalNote({ note, onTap }: { note: Note; onTap: () => void }) {
     <button
       ref={setNodeRef}
       className={`event-row${isDragging ? ' cal-dragging' : ''}`}
-      // 'none' bloqueaba TODO gesto táctil sobre la fila, así que el panel del
-      // día no se podía desplazar. Con 'manipulation' el navegador desplaza
-      // hasta que se cumple el delay del TouchSensor (200 ms) y arranca el drag.
-      style={{ touchAction: 'manipulation' }}
+      // 'none' es necesario para que dnd-kit capture el gesto en Android.
+      // Con 'manipulation' el WebView reclama el scroll desde el inicio y
+      // preventDefault() ya no tiene efecto cuando el sensor activa el drag.
+      // El panel sigue siendo desplazable tocando áreas sin notas (título, eventos).
+      style={{ touchAction: 'none' }}
       {...attributes}
       {...listeners}
       onClick={onTap}
@@ -176,6 +180,8 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
   const [calEvents, setCalEvents] = useState<CalendarEvent[]>([])
   const [gCalConnected, setGCalConnected] = useState(() => isGoogleCalendarAuthenticated())
   const [msConnected, setMsConnected] = useState(() => isMicrosoftAuthenticated())
+  // Contador que fuerza la recarga de eventos (timer de 2 min + vuelta al foco).
+  const [reloadTick, setReloadTick] = useState(0)
   const weekScrollRef = useRef<HTMLDivElement>(null)
   const todayColRef = useRef<HTMLDivElement>(null)
   const longTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -225,7 +231,36 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
     }
     load()
     return () => { cancelled = true }
-  }, [calView, current, weekAnchor, gCalConnected, msConnected])
+  }, [calView, current, weekAnchor, gCalConnected, msConnected, reloadTick])
+
+  // Recarga periódica: los tokens de calendario se refrescan solos, pero si la
+  // pantalla se queda abierta sin recargar los eventos se quedan congelados.
+  useEffect(() => {
+    const id = setInterval(() => setReloadTick(t => t + 1), CAL_RELOAD_INTERVAL)
+    // Al volver del navegador tras un login de calendario, la sesión ya existe
+    // pero el estado de este componente aún dice "desconectado": se revisa aquí.
+    const bump = (): void => {
+      setGCalConnected(isGoogleCalendarAuthenticated())
+      setMsConnected(isMicrosoftAuthenticated())
+      setReloadTick(t => t + 1)
+    }
+    const onVisible = (): void => { if (!document.hidden) bump() }
+    window.addEventListener('focus', bump)
+    document.addEventListener('visibilitychange', onVisible)
+    // auth-updated: App.tsx lo despacha cuando un callback OAuth completa.
+    // visibilitychange puede llegar ANTES de que el fetch de token termine
+    // (race condition), así que necesitamos este evento explícito.
+    window.addEventListener('auth-updated', bump)
+    return () => {
+      clearInterval(id)
+      window.removeEventListener('focus', bump)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('auth-updated', bump)
+    }
+  }, [])
+
+  // El widget de Android se alimenta desde NoteList, que está siempre montado
+  // (esta vista solo existe mientras la pestaña de calendario está activa).
 
   // Scroll today's column into view when the week view is active
   useEffect(() => {
@@ -275,7 +310,9 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
     return calEvents.filter(ev => eventOnDay(ev, d))
   }
 
-  const connectGoogleCalendar = () => { startGoogleCalendarAuth() }
+  const connectGoogleCalendar = () => {
+    void startGoogleCalendarAuth().catch(e => console.error('[g-cal-auth]', e))
+  }
 
   const disconnectGoogleCalendar = () => {
     logoutGoogleCalendar()
@@ -283,7 +320,9 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
     setCalEvents(prev => prev.filter(e => e.source !== 'google'))
   }
 
-  const connectMicrosoft = () => { startMicrosoftAuth() }
+  const connectMicrosoft = () => {
+    void startMicrosoftAuth().catch(e => console.error('[ms-auth]', e))
+  }
 
   const disconnectMicrosoft = () => {
     logoutMicrosoft()
@@ -310,9 +349,8 @@ export default function CalendarView({ notes, onNoteSelect, onSave, onNewNote }:
     const existing = new Date(note.dueDate!)
     const newDate = new Date(yr, mo - 1, da, existing.getHours(), existing.getMinutes(), 0, 0)
     const newDueDate = `${newDate.getFullYear()}-${padN(newDate.getMonth()+1)}-${padN(newDate.getDate())}T${padN(newDate.getHours())}:${padN(newDate.getMinutes())}:00`
-    if (calView === 'month') setSelected(new Date(yr, mo - 1, da))
     onSave(notes.map(n => n.id === note.id ? { ...n, dueDate: newDueDate } : n))
-  }, [calView, notes, onSave])
+  }, [notes, onSave])
 
   // ── Month view ─────────────────────────────────────────────────────────
   const year = current.getFullYear()

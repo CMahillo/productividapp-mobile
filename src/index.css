@@ -1020,10 +1020,10 @@ a.cal-evt-row {
   background: var(--surface);
   border-radius: 20px 20px 0 0;
   width: 100%;
-  padding: 0 16px calc(16px + var(--safe-bottom));
+  padding: 0 16px calc(12px + var(--safe-bottom));
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -1032,28 +1032,28 @@ a.cal-evt-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 4px;
+  padding-top: 2px;
 }
 
-.dtp-month { font-size: 16px; font-weight: 600; text-transform: capitalize; }
+.dtp-month { font-size: 14px; font-weight: 600; text-transform: capitalize; }
 
 .dtp-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
+  gap: 1px;
 }
 
-.dtp-day-hdr { text-align: center; font-size: 12px; color: var(--text2); padding: 4px 0; font-weight: 500; }
+.dtp-day-hdr { text-align: center; font-size: 10px; color: var(--text2); padding: 2px 0; font-weight: 500; }
 
 .dtp-day {
-  aspect-ratio: 1;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: none;
   border: none;
-  font-size: 14px;
+  font-size: 12px;
   color: var(--text);
   cursor: pointer;
   transition: background .12s;
@@ -1066,15 +1066,15 @@ a.cal-evt-row {
 .dtp-time {
   background: var(--bg);
   border-radius: 12px;
-  padding: 12px;
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
 .dtp-time-header { display: flex; align-items: center; justify-content: space-between; }
-.dtp-time-label { font-size: 13px; color: var(--text2); font-weight: 500; }
-.dtp-time-clear { background: none; border: none; color: var(--text2); font-size: 13px; cursor: pointer; text-decoration: underline; }
+.dtp-time-label { font-size: 12px; color: var(--text2); font-weight: 500; }
+.dtp-time-clear { background: none; border: none; color: var(--text2); font-size: 12px; cursor: pointer; text-decoration: underline; }
 
 .dtp-time-add {
   background: var(--surface2);
@@ -1088,54 +1088,86 @@ a.cal-evt-row {
   text-align: left;
 }
 
-.dtp-time-selectors { display: flex; align-items: center; gap: 8px; }
+.dtp-actions { display: flex; gap: 8px; align-items: center; padding-bottom: 2px; }
 
-.dtp-scroll-wrap {
-  flex: 1;
-  height: 120px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  scroll-snap-type: y mandatory;
+.dtp-quick { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+.dtp-quick-btn { background: var(--surface2); border: none; border-radius: 10px; padding: 8px 12px; text-align: left; font-size: 13px; color: var(--text); cursor: pointer; }
+.dtp-quick-btn:active { background: var(--accent); color: #fff; }
+
+/* ── Reloj tipo dial (hora/minutos) ── */
+.dtp-dial-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding-bottom: 2px;
 }
 
-.dtp-scroll { display: flex; flex-direction: column; }
-
-.dtp-scroll-item {
+.dtp-dial-hm {
   background: none;
   border: none;
   color: var(--text2);
-  font-size: 18px;
-  padding: 8px;
+  font-size: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 10px;
   cursor: pointer;
-  text-align: center;
-  scroll-snap-align: start;
-  transition: background .1s, color .1s;
+  transition: background .12s, color .12s;
 }
-.dtp-scroll-item.selected { background: var(--accent); color: #fff; border-radius: 8px; }
+.dtp-dial-hm.active { color: var(--accent); background: var(--surface2); }
+.dtp-dial-colon { font-size: 34px; font-weight: 700; color: var(--text2); line-height: 1; }
 
-.dtp-colon { font-size: 22px; font-weight: 700; color: var(--text2); }
-
-.dtp-min-wrap { display: flex; flex-direction: column; gap: 4px; }
-
-.dtp-min-btn {
+.dtp-dial-face {
+  position: relative;
+  width: min(100%, 230px);
+  aspect-ratio: 1;
+  margin: 4px auto 2px;
+  border-radius: 50%;
   background: var(--surface2);
-  border: none;
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 16px;
-  padding: 8px 14px;
-  cursor: pointer;
-  min-width: 52px;
-  transition: background .12s;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
-.dtp-min-btn.selected { background: var(--accent); color: #fff; }
 
-.dtp-actions { display: flex; gap: 8px; align-items: center; padding-bottom: 4px; }
+.dtp-dial-hand {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  background: var(--accent);
+  transform-origin: 50% 100%;
+  pointer-events: none;
+}
 
-.dtp-quick { display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
-.dtp-quick-btn { background: var(--surface2); border: none; border-radius: 10px; padding: 10px 14px; text-align: left; font-size: 14px; color: var(--text); cursor: pointer; }
-.dtp-quick-btn:active { background: var(--accent); color: #fff; }
+.dtp-dial-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.dtp-dial-num {
+  position: absolute;
+  min-width: 34px;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  font-size: 13px;
+  color: var(--text);
+  pointer-events: none;
+}
+.dtp-dial-num.inner { font-size: 12px; color: var(--text2); }
+.dtp-dial-num.selected { background: var(--accent); color: #fff; font-weight: 700; }
 
 /* ── Label selector ── */
 .label-section { display: flex; flex-direction: column; gap: 8px; }
@@ -1310,14 +1342,15 @@ a.cal-evt-row {
   background: rgba(99,102,241,.18);
 }
 
-/* Scroll en los dos ejes: horizontal entre columnas y vertical dentro del
-   tablero completo (antes cada columna scrolleaba por separado). */
+/* Scroll solo horizontal entre columnas; cada columna scrollea verticalmente
+   por su cuenta dentro de .board-col-body. */
 .board-scroll {
   flex: 1;
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 12px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior: contain;
   padding: 12px 16px;
   -webkit-overflow-scrolling: touch;
@@ -1332,13 +1365,8 @@ a.cal-evt-row {
   flex-direction: column;
   gap: 6px;
   scroll-snap-align: start;
-  /* Al menos toda la altura visible (para poder soltar notas en columnas
-     cortas), pero crece con el contenido y arrastra el scroll vertical. */
-  height: auto;
-  min-height: 100%;
 }
 
-/* Se queda pegada arriba al desplazar el tablero en vertical */
 .board-col-header {
   display: flex;
   align-items: center;
@@ -1346,9 +1374,6 @@ a.cal-evt-row {
   gap: 6px;
   padding: 4px 2px;
   flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  z-index: 2;
   background: var(--bg);
 }
 
@@ -1378,14 +1403,16 @@ a.cal-evt-row {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  /* Sin scroll propio: el scroll vertical lo lleva .board-scroll */
-  overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   padding: 6px;
   border-radius: 12px;
   background: rgba(255,255,255,.03);
   border: 2px solid transparent;
   transition: background .15s, border-color .15s;
 }
+.board-col-body::-webkit-scrollbar { display: none; }
 .board-col-body > * { flex-shrink: 0; }
 .board-col-body.drop-over {
   background: rgba(99,102,241,.1);
@@ -1456,4 +1483,66 @@ a.cal-evt-row {
   border-color: var(--accent);
   color: var(--accent);
   background: rgba(99,102,241,.08);
+}
+
+/* ── Event cards in board view ── */
+.event-card {
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(66, 133, 244, 0.12);
+  border-left: 3px solid #4285F4;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0,0,0,.18);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.event-card--draggable {
+  cursor: grab;
+}
+.event-card--draggable:active { transform: scale(0.97); }
+
+.event-card.dragging {
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  transform: scale(1.04) rotate(1deg);
+}
+
+.event-card-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.event-card-source {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(66, 133, 244, 0.25);
+  color: #93c5fd;
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.3px;
+}
+
+.event-card-title {
+  font-size: 13px;
+  color: #dbeafe;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.event-card-time {
+  font-size: 11px;
+  color: #93c5fd;
+  margin-top: 4px;
+}
+
+.event-card-hint {
+  font-size: 10px;
+  color: rgba(147, 197, 253, 0.5);
+  margin-top: 4px;
+  font-style: italic;
 }

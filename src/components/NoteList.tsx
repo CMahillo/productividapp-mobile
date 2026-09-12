@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { Note, QuickItem } from '../types'
+import { refreshWidgetFromSources } from '../widgetBridge'
 import NoteCard from './NoteCard'
 import NoteDetail from './NoteDetail'
 import NoteEditor from './NoteEditor'
@@ -9,6 +10,9 @@ import BoardView from './BoardView'
 
 type Tab = 'notes' | 'calendar' | 'board' | 'quick'
 
+/** Cada cuánto se refrescan los datos del widget de Android. */
+const WIDGET_REFRESH_INTERVAL = 2 * 60 * 1000
+
 interface Props {
   notes: Note[]
   quickItems: QuickItem[]
@@ -16,13 +20,71 @@ interface Props {
   onSave: (notes: Note[]) => void
   onSync: () => void
   onLogout: () => void
+  /** Sube cada vez que el botón "+" del widget de Android pide una nota nueva. */
+  newNoteRequest?: number
+  /** Avisa a App de que la petición ya se ha atendido, para no repetirla. */
+  onNewNoteHandled?: () => void
+  /** Nota que pide abrir una fila del widget de Android. `seq` sube en cada
+   *  pulsación, para que repetir la misma nota vuelva a abrir el editor. */
+  openNoteRequest?: { id: string; seq: number } | null
+  /** Avisa a App de que la petición ya se ha atendido. */
+  onOpenNoteHandled?: () => void
 }
 
-export default function NoteList({ notes, quickItems, syncing, onSave, onSync, onLogout }: Props) {
+export default function NoteList({
+  notes, quickItems, syncing, onSave, onSync, onLogout,
+  newNoteRequest = 0, onNewNoteHandled,
+  openNoteRequest = null, onOpenNoteHandled
+}: Props) {
   const [tab, setTab] = useState<Tab>('notes')
   const [query, setQuery] = useState('')
   const [detail, setDetail] = useState<Note | null>(null)
   const [editState, setEditState] = useState<{ note: Note | null; defaultDueDate?: string } | null>(null)
+
+  // Petición de nota nueva desde el widget. Funciona igual en arranque en frío
+  // (el contador ya vale >0 cuando este componente se monta) que con la app
+  // abierta (el contador sube y dispara el efecto).
+  useEffect(() => {
+    if (newNoteRequest <= 0) return
+    setTab('notes')
+    setDetail(null)
+    setEditState({ note: null })
+    onNewNoteHandled?.()
+  }, [newNoteRequest])
+
+  // Petición de abrir una nota concreta desde el widget. Igual que la anterior,
+  // funciona tanto en arranque en frío (la prop ya viene puesta al montar) como
+  // con la app abierta. Si la nota ya no existe se descarta la petición.
+  useEffect(() => {
+    if (!openNoteRequest) return
+    const note = notes.find(n => n.id === openNoteRequest.id)
+    if (note) {
+      setTab('notes')
+      setDetail(null)
+      setEditState({ note })
+    }
+    onOpenNoteHandled?.()
+  }, [openNoteRequest?.seq])
+
+  // Alimenta el widget de Android: al arrancar, al cambiar las notas, cada
+  // 2 min y al volver a primer plano. Este componente está siempre montado,
+  // así que el widget se rellena aunque el usuario no abra el calendario.
+  useEffect(() => {
+    let cancelled = false
+    const feed = (): void => {
+      if (cancelled) return
+      void refreshWidgetFromSources(notes).catch(e => console.warn('[widget]', e))
+    }
+    feed()
+    const id = setInterval(feed, WIDGET_REFRESH_INTERVAL)
+    const onVisible = (): void => { if (!document.hidden) feed() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [notes])
 
   const availableLabels = useMemo(
     () => [...new Set(notes.map(n => n.label).filter((l): l is string => !!l))],
