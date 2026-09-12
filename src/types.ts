@@ -12,6 +12,9 @@ export interface Note {
   hidden?: boolean
   pinned?: boolean
   createdAt: string
+  /** Marca de última modificación (ISO). Es lo que decide quién gana en el merge
+   *  con Drive, así que hay que tocarlo en CUALQUIER cambio de la nota. */
+  updatedAt: string
 }
 
 export interface QuickItem {

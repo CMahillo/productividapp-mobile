@@ -570,6 +570,7 @@ export default function BoardView({ notes, onSave }: Props) {
       const eventId = dragId.slice(EVENT_PREFIX.length)
       const ev = calEvents.find(e => e.id === eventId)
       if (!ev) return
+      const now = new Date().toISOString()
       const newNote: Note = {
         id: crypto.randomUUID(),
         content: ev.title,
@@ -577,7 +578,8 @@ export default function BoardView({ notes, onSave }: Props) {
         label: col.id === 'label:__none' ? undefined : col.id.replace('label:', ''),
         color: '#BFDBFE',
         x: 0, y: 0, width: 200, height: 100,
-        createdAt: new Date().toISOString()
+        createdAt: now,
+        updatedAt: now
       }
       const newConverted = new Set([...convertedEventIds, eventId])
       setConvertedEventIds(newConverted)

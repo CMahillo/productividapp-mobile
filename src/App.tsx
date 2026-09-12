@@ -17,7 +17,9 @@ import {
   handleMicrosoftCallback, initMicrosoftAuth,
   proactiveRefreshMicrosoft, wasMsExchangeRetryable
 } from './microsoftAuth'
-import { readNotes, writeNotes, readQuickItems } from './drive'
+import { readNotes, pushNotesToDrive, readQuickItems } from './drive'
+import { mergeNotes, nowIso } from './notesMerge'
+import type { MergeableNote, NotesSnapshot, Tombstone } from './notesMerge'
 import {
   requestNotificationPermission, scheduleNotifications, createNotificationChannel
 } from './notifications'
@@ -43,6 +45,17 @@ const EXCHANGE_RETRY_BACKOFF_MS = 1500
  *  OAuth explícito (invalid_grant, invalid_request, código ya canjeado…) NO se
  *  reintenta: reintentarlo no arregla nada. Sin esto, un corte de red de un
  *  segundo al volver del navegador obligaba a repetir todo el login. */
+/** `Note` y `MergeableNote` describen el mismo objeto, pero TypeScript no las da
+ *  por compatibles porque `Note` es una interfaz (sin índice de campos libres).
+ *  El puente se hace con un cast, en estos dos únicos sitios. */
+function toSnapshot(notes: Note[], deletedNoteIds: Tombstone[]): NotesSnapshot {
+  return { notes: notes as unknown as MergeableNote[], deletedNoteIds }
+}
+
+function notesOf(snapshot: NotesSnapshot): Note[] {
+  return snapshot.notes as unknown as Note[]
+}
+
 async function exchangeWithRetry<T>(
   run: () => Promise<T>,
   succeeded: (r: T) => boolean,
@@ -59,7 +72,7 @@ export default function App() {
   const [state, setState] = useState<AppState>('loading')
   const [deepLink, setDeepLink] = useState('')
   const [notes, setNotes] = useState<Note[]>([])
-  const [deletedNoteIds, setDeletedNoteIds] = useState<string[]>([])
+  const [tombstones, setTombstones] = useState<Tombstone[]>([])
   const [quickItems, setQuickItems] = useState<QuickItem[]>([])
   const [syncing, setSyncing] = useState(false)
   // Contador de peticiones de "nota nueva" llegadas por deep link (botón + del
@@ -71,7 +84,7 @@ export default function App() {
   // seguidas la misma nota vuelva a disparar el efecto de NoteList.
   const [openNoteRequest, setOpenNoteRequest] = useState<{ id: string; seq: number } | null>(null)
   const notesRef = useRef<Note[]>([])
-  const deletedIdsRef = useRef<string[]>([])
+  const tombstonesRef = useRef<Tombstone[]>([])
   // Evita procesar dos veces el mismo deep link (puede llegar a la vez por
   // getLaunchUrl() en arranque en frío y por el evento appUrlOpen).
   const handledUrls = useRef<Set<string>>(new Set())
@@ -85,7 +98,7 @@ export default function App() {
 
   // Mantener refs sincronizadas para usarlas en closures de timers/eventos
   useEffect(() => { notesRef.current = notes }, [notes])
-  useEffect(() => { deletedIdsRef.current = deletedNoteIds }, [deletedNoteIds])
+  useEffect(() => { tombstonesRef.current = tombstones }, [tombstones])
 
   useEffect(() => {
     let listener: PluginListenerHandle | null = null
@@ -376,14 +389,19 @@ export default function App() {
     try {
       const [data, qItems] = await Promise.all([readNotes(), readQuickItems()])
       if (data === null) { setState('drive-error'); return }
-      setNotes(data.notes)
-      setDeletedNoteIds(data.deletedNoteIds)
+      // Fusionar en vez de reemplazar: lo que haya en memoria puede ser más
+      // reciente que Drive (p.ej. una escritura que falló por red), y el merge
+      // decide nota a nota por `updatedAt` en vez de dejar ganar a Drive siempre.
+      const merged = mergeNotes(toSnapshot(notesRef.current, tombstonesRef.current), data)
+      const mergedNotes = notesOf(merged)
+      setNotes(mergedNotes)
+      setTombstones(merged.deletedNoteIds)
       setQuickItems(qItems ?? [])
       setState('ready')
       // Se programa siempre, sin condicionarlo al permiso: el plugin ignora
       // los avisos sin permiso sin romper nada, y así basta con conceder el
       // permiso desde ajustes para que la siguiente sincronización los active.
-      void scheduleNotifications(data.notes).catch(e => console.error('[notif] schedule', e))
+      void scheduleNotifications(mergedNotes).catch(e => console.error('[notif] schedule', e))
     } catch (e) {
       console.error('[drive]', e)
       // Si el token murió de verdad, auth.logout() ya limpió la sesión: en ese
@@ -395,18 +413,37 @@ export default function App() {
   }
 
   async function saveNotes(updated: Note[]) {
-    // Detectar qué IDs desaparecieron entre el estado actual y el nuevo
-    const prevIds = new Set(notesRef.current.map(n => n.id))
-    const newIds = new Set(updated.map(n => n.id))
-    const justDeleted = [...prevIds].filter(id => !newIds.has(id))
-    const allDeleted = justDeleted.length > 0
-      ? [...new Set([...deletedIdsRef.current, ...justDeleted])]
-      : deletedIdsRef.current
+    const previous = notesRef.current
+    const now = nowIso()
 
-    setNotes(updated)
-    if (justDeleted.length > 0) setDeletedNoteIds(allDeleted)
-    void scheduleNotifications(updated)
-    await writeNotes(updated, allDeleted)
+    // Las vistas siguen mandando el array completo, así que `updatedAt` se sella
+    // aquí comparando con el estado anterior: una nota que no ha cambiado
+    // conserva su marca y no gana conflictos que no le corresponden.
+    const previousById = new Map(previous.map(note => [note.id, note]))
+    const stamped = updated.map(note => {
+      const before = previousById.get(note.id)
+      if (before && JSON.stringify(before) === JSON.stringify(note)) return before
+      return { ...note, updatedAt: now }
+    })
+
+    // Lápidas de lo que ha desaparecido, con la hora del borrado.
+    const currentIds = new Set(stamped.map(note => note.id))
+    const tombs: Tombstone[] = [
+      ...tombstonesRef.current.filter(tombstone => !currentIds.has(tombstone.id)),
+      ...previous.filter(note => !currentIds.has(note.id)).map(note => ({ id: note.id, deletedAt: now }))
+    ]
+
+    setNotes(stamped)
+    setTombstones(tombs)
+    void scheduleNotifications(stamped)
+
+    // Escritura no ciega: lee Drive, fusiona y escribe si nadie se ha adelantado.
+    const merged = await pushNotesToDrive(toSnapshot(stamped, tombs))
+    if (!merged) return
+    const mergedNotes = notesOf(merged)
+    setNotes(mergedNotes)
+    setTombstones(merged.deletedNoteIds)
+    void scheduleNotifications(mergedNotes)
   }
 
   if (state === 'loading') return (

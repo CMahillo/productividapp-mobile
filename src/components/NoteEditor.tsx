@@ -94,8 +94,8 @@ export default function NoteEditor({ note, labels, defaultLabel, defaultDueDate,
     if (!content.trim() && !note) { onClose(); return }
     const now = new Date().toISOString()
     const saved: Note = note
-      ? { ...note, content, color, dueDate, label }
-      : { id: crypto.randomUUID(), content, x: 100, y: 100, width: 220, height: 190, color, dueDate, label, createdAt: now, fontSize: 13 }
+      ? { ...note, content, color, dueDate, label, updatedAt: now }
+      : { id: crypto.randomUUID(), content, x: 100, y: 100, width: 220, height: 190, color, dueDate, label, createdAt: now, updatedAt: now, fontSize: 13 }
     onSave(saved)
   }
 

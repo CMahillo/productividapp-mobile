@@ -1,5 +1,7 @@
 import { getAccessToken } from './auth'
-import type { Note, QuickItem } from './types'
+import { mergeNotes, normalizeSnapshot } from './notesMerge'
+import type { NotesSnapshot } from './notesMerge'
+import type { QuickItem } from './types'
 
 const FOLDER_NAME = 'ProductividApp'
 const NOTES_FILE = 'notas.json'
@@ -34,30 +36,50 @@ async function getOrCreateFolder(): Promise<string | null> {
   return (await findFolderId()) ?? createFolder()
 }
 
-async function findFileId(folderId: string, fileName: string): Promise<string | null> {
+async function findFile(
+  folderId: string,
+  fileName: string
+): Promise<{ id: string; headRevisionId: string | null } | null> {
   const q = `name='${fileName}' and '${folderId}' in parents and trashed=false`
-  const res = await apiFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`)
+  const res = await apiFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,headRevisionId)`)
   if (!res.ok) return null
-  const data = await res.json() as { files: { id: string }[] }
-  return data.files[0]?.id ?? null
+  const data = await res.json() as { files: { id: string; headRevisionId?: string }[] }
+  const file = data.files[0]
+  return file ? { id: file.id, headRevisionId: file.headRevisionId ?? null } : null
 }
 
-export type DriveNotesPayload = { notes: Note[]; deletedNoteIds: string[] }
+async function findFileId(folderId: string, fileName: string): Promise<string | null> {
+  return (await findFile(folderId, fileName))?.id ?? null
+}
 
-export async function readNotes(): Promise<DriveNotesPayload | null> {
+/** Revisión actual del fichero — el "número de versión" que usamos como
+ *  condición de escritura (ver `pushNotesToDrive`). */
+async function getHeadRevisionId(fileId: string): Promise<string | null> {
+  const res = await apiFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=headRevisionId`)
+  if (!res.ok) return null
+  const data = await res.json() as { headRevisionId?: string }
+  return data.headRevisionId ?? null
+}
+
+type RemoteNotes = { fileId: string | null; revisionId: string | null; snapshot: NotesSnapshot }
+
+async function readNotesFile(folderId: string): Promise<RemoteNotes | null> {
+  const file = await findFile(folderId, NOTES_FILE)
+  if (!file) return { fileId: null, revisionId: null, snapshot: { notes: [], deletedNoteIds: [] } }
+
+  const res = await apiFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`)
+  if (!res.ok) return null
+  return {
+    fileId: file.id,
+    revisionId: file.headRevisionId,
+    snapshot: normalizeSnapshot(await res.json())
+  }
+}
+
+export async function readNotes(): Promise<NotesSnapshot | null> {
   const folderId = await getOrCreateFolder()
   if (!folderId) return null
-
-  const fileId = await findFileId(folderId, NOTES_FILE)
-  if (!fileId) return { notes: [], deletedNoteIds: [] }
-
-  const res = await apiFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`)
-  if (!res.ok) return null
-  const raw = await res.json()
-  // Migración: formato antiguo era Note[] directo
-  if (Array.isArray(raw)) return { notes: raw as Note[], deletedNoteIds: [] }
-  const payload = raw as DriveNotesPayload
-  return { notes: payload.notes ?? [], deletedNoteIds: payload.deletedNoteIds ?? [] }
+  return (await readNotesFile(folderId))?.snapshot ?? null
 }
 
 export async function readQuickItems(): Promise<QuickItem[] | null> {
@@ -72,12 +94,7 @@ export async function readQuickItems(): Promise<QuickItem[] | null> {
   return res.json() as Promise<QuickItem[]>
 }
 
-export async function writeNotes(notes: Note[], deletedNoteIds: string[]): Promise<boolean> {
-  const folderId = await getOrCreateFolder()
-  if (!folderId) return false
-
-  const fileId = await findFileId(folderId, NOTES_FILE)
-  const content = JSON.stringify({ notes, deletedNoteIds }, null, 2)
+async function uploadNotesFile(folderId: string, fileId: string | null, content: string): Promise<boolean> {
   const metadata = fileId ? { name: NOTES_FILE } : { name: NOTES_FILE, parents: [folderId] }
 
   const boundary = 'pb_boundary_314159'
@@ -103,4 +120,42 @@ export async function writeNotes(notes: Note[], deletedNoteIds: string[]): Promi
     body
   })
   return res.ok
+}
+
+/** Intentos del ciclo leer → fusionar → escribir antes de rendirse. */
+const SAVE_MAX_ATTEMPTS = 4
+
+/** Único camino de escritura de notas a Drive: lee el estado remoto, lo fusiona
+ *  con el local (merge compartido con el escritorio, ver notesMerge.ts) y escribe
+ *  el resultado solo si el fichero remoto no ha cambiado desde la lectura. Nunca
+ *  sobrescribe a ciegas. Devuelve el snapshot fusionado —el estado bueno— o
+ *  `null` si no se pudo escribir. */
+export async function pushNotesToDrive(local: NotesSnapshot): Promise<NotesSnapshot | null> {
+  const folderId = await getOrCreateFolder()
+  if (!folderId) return null
+
+  for (let attempt = 1; attempt <= SAVE_MAX_ATTEMPTS; attempt++) {
+    const remote = await readNotesFile(folderId)
+    if (!remote) return null
+
+    const merged = mergeNotes(local, remote.snapshot)
+    const content = JSON.stringify({ notes: merged.notes, deletedNoteIds: merged.deletedNoteIds }, null, 2)
+
+    // La API v3 de Drive no expone ETags de fichero ni admite `If-Match` en la
+    // subida, así que la condición se hace con `headRevisionId`: si cambió, otro
+    // dispositivo escribió después de nuestra lectura y hay que rehacer el ciclo.
+    const stillOurs = remote.fileId
+      ? !remote.revisionId || (await getHeadRevisionId(remote.fileId)) === remote.revisionId
+      : !(await findFileId(folderId, NOTES_FILE))
+
+    if (stillOurs) {
+      if (!(await uploadNotesFile(folderId, remote.fileId, content))) return null
+      return merged
+    }
+
+    console.warn(`[drive] conflicto de versión en ${NOTES_FILE}; reintento ${attempt}/${SAVE_MAX_ATTEMPTS}`)
+    await new Promise(resolve => setTimeout(resolve, 300 * attempt))
+  }
+
+  return null
 }
