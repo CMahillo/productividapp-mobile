@@ -8,8 +8,9 @@ import NoteEditor from './NoteEditor'
 import CalendarView from './CalendarView'
 import QuickPanelView from './QuickPanelView'
 import BoardView from './BoardView'
+import LongNotesTab from './LongNotesTab'
 
-type Tab = 'notes' | 'calendar' | 'board' | 'quick'
+type Tab = 'notes' | 'calendar' | 'board' | 'quick' | 'longnotes'
 
 /** Cada cuánto se refrescan los datos del widget de Android. */
 const WIDGET_REFRESH_INTERVAL = 2 * 60 * 1000
@@ -136,7 +137,7 @@ export default function NoteList({
       {/* Header */}
       <header className="topbar">
         <span className="topbar-title">
-          {tab === 'notes' ? '📌 Notas' : tab === 'calendar' ? '📅 Calendario' : tab === 'board' ? '🗂 Tablero' : '⚡ Rápido'}
+          {tab === 'notes' ? '📌 Notas' : tab === 'calendar' ? '📅 Calendario' : tab === 'board' ? '🗂 Tablero' : tab === 'longnotes' ? '📖 Notas largas' : '⚡ Rápido'}
         </span>
         <div className="topbar-actions">
           {tab === 'notes' && (
@@ -181,6 +182,8 @@ export default function NoteList({
         />
       ) : tab === 'board' ? (
         <BoardView notes={notes} onSave={onSave} />
+      ) : tab === 'longnotes' ? (
+        <LongNotesTab />
       ) : (
         <QuickPanelView items={quickItems} />
       )}
@@ -202,6 +205,10 @@ export default function NoteList({
         <button className={`tab-btn ${tab === 'quick' ? 'active' : ''}`} onClick={() => setTab('quick')}>
           <span className="tab-icon">⚡</span>
           <span className="tab-label">Rápido</span>
+        </button>
+        <button className={`tab-btn ${tab === 'longnotes' ? 'active' : ''}`} onClick={() => setTab('longnotes')}>
+          <span className="tab-icon">📖</span>
+          <span className="tab-label">Largas</span>
         </button>
       </nav>
 

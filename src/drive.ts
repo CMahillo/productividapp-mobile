@@ -5,6 +5,7 @@ import type { QuickItem } from './types'
 
 const FOLDER_NAME = 'ProductividApp'
 const NOTES_FILE = 'notas.json'
+const LONG_NOTES_FILE = 'notas-largas.json'
 const QUICK_FILE = 'quickpanel.json'
 
 async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -63,8 +64,11 @@ async function getHeadRevisionId(fileId: string): Promise<string | null> {
 
 type RemoteNotes = { fileId: string | null; revisionId: string | null; snapshot: NotesSnapshot }
 
-async function readNotesFile(folderId: string): Promise<RemoteNotes | null> {
-  const file = await findFile(folderId, NOTES_FILE)
+/** Genérico sobre el nombre de fichero: notas normales (`notas.json`) y notas
+ *  largas del repositorio (`notas-largas.json`) comparten exactamente el mismo
+ *  ciclo leer→fusionar→escribir condicionado, solo cambia el fichero. */
+async function readRemoteFile(folderId: string, fileName: string): Promise<RemoteNotes | null> {
+  const file = await findFile(folderId, fileName)
   if (!file) return { fileId: null, revisionId: null, snapshot: { notes: [], deletedNoteIds: [] } }
 
   const res = await apiFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`)
@@ -79,7 +83,15 @@ async function readNotesFile(folderId: string): Promise<RemoteNotes | null> {
 export async function readNotes(): Promise<NotesSnapshot | null> {
   const folderId = await getOrCreateFolder()
   if (!folderId) return null
-  return (await readNotesFile(folderId))?.snapshot ?? null
+  return (await readRemoteFile(folderId, NOTES_FILE))?.snapshot ?? null
+}
+
+/** Notas largas del repositorio (§5 PROPUESTA-EVOLUCION.md): fichero de Drive
+ *  separado y aislado de `notas.json`, mismo algoritmo de lectura. */
+export async function readLongNotes(): Promise<NotesSnapshot | null> {
+  const folderId = await getOrCreateFolder()
+  if (!folderId) return null
+  return (await readRemoteFile(folderId, LONG_NOTES_FILE))?.snapshot ?? null
 }
 
 export async function readQuickItems(): Promise<QuickItem[] | null> {
@@ -94,8 +106,8 @@ export async function readQuickItems(): Promise<QuickItem[] | null> {
   return res.json() as Promise<QuickItem[]>
 }
 
-async function uploadNotesFile(folderId: string, fileId: string | null, content: string): Promise<boolean> {
-  const metadata = fileId ? { name: NOTES_FILE } : { name: NOTES_FILE, parents: [folderId] }
+async function uploadFile(folderId: string, fileId: string | null, fileName: string, content: string): Promise<boolean> {
+  const metadata = fileId ? { name: fileName } : { name: fileName, parents: [folderId] }
 
   const boundary = 'pb_boundary_314159'
   const body = [
@@ -125,17 +137,19 @@ async function uploadNotesFile(folderId: string, fileId: string | null, content:
 /** Intentos del ciclo leer → fusionar → escribir antes de rendirse. */
 const SAVE_MAX_ATTEMPTS = 4
 
-/** Único camino de escritura de notas a Drive: lee el estado remoto, lo fusiona
- *  con el local (merge compartido con el escritorio, ver notesMerge.ts) y escribe
- *  el resultado solo si el fichero remoto no ha cambiado desde la lectura. Nunca
- *  sobrescribe a ciegas. Devuelve el snapshot fusionado —el estado bueno— o
- *  `null` si no se pudo escribir. */
-export async function pushNotesToDrive(local: NotesSnapshot): Promise<NotesSnapshot | null> {
+/** Único camino de escritura a Drive de una colección tipo notas: lee el
+ *  estado remoto, lo fusiona con el local (merge compartido con el escritorio,
+ *  ver notesMerge.ts) y escribe el resultado solo si el fichero remoto no ha
+ *  cambiado desde la lectura. Nunca sobrescribe a ciegas. Devuelve el snapshot
+ *  fusionado —el estado bueno— o `null` si no se pudo escribir. Usado tanto
+ *  por `notas.json` como por `notas-largas.json` — mismo algoritmo, distinto
+ *  fichero. */
+async function pushSnapshotToDrive(fileName: string, local: NotesSnapshot): Promise<NotesSnapshot | null> {
   const folderId = await getOrCreateFolder()
   if (!folderId) return null
 
   for (let attempt = 1; attempt <= SAVE_MAX_ATTEMPTS; attempt++) {
-    const remote = await readNotesFile(folderId)
+    const remote = await readRemoteFile(folderId, fileName)
     if (!remote) return null
 
     const merged = mergeNotes(local, remote.snapshot)
@@ -146,16 +160,26 @@ export async function pushNotesToDrive(local: NotesSnapshot): Promise<NotesSnaps
     // dispositivo escribió después de nuestra lectura y hay que rehacer el ciclo.
     const stillOurs = remote.fileId
       ? !remote.revisionId || (await getHeadRevisionId(remote.fileId)) === remote.revisionId
-      : !(await findFileId(folderId, NOTES_FILE))
+      : !(await findFileId(folderId, fileName))
 
     if (stillOurs) {
-      if (!(await uploadNotesFile(folderId, remote.fileId, content))) return null
+      if (!(await uploadFile(folderId, remote.fileId, fileName, content))) return null
       return merged
     }
 
-    console.warn(`[drive] conflicto de versión en ${NOTES_FILE}; reintento ${attempt}/${SAVE_MAX_ATTEMPTS}`)
+    console.warn(`[drive] conflicto de versión en ${fileName}; reintento ${attempt}/${SAVE_MAX_ATTEMPTS}`)
     await new Promise(resolve => setTimeout(resolve, 300 * attempt))
   }
 
   return null
+}
+
+export async function pushNotesToDrive(local: NotesSnapshot): Promise<NotesSnapshot | null> {
+  return pushSnapshotToDrive(NOTES_FILE, local)
+}
+
+/** Notas largas del repositorio (§5 PROPUESTA-EVOLUCION.md): fichero de Drive
+ *  separado y aislado de `notas.json`, mismo algoritmo de sync. */
+export async function pushLongNotesToDrive(local: NotesSnapshot): Promise<NotesSnapshot | null> {
+  return pushSnapshotToDrive(LONG_NOTES_FILE, local)
 }

@@ -21,6 +21,22 @@ export interface Note {
   updatedAt: string
 }
 
+/**
+ * Repositorio de notas largas (§5 PROPUESTA-EVOLUCION.md): documentos con
+ * título + contenido, sin fecha ni posición en el tablero. Vive en su propio
+ * fichero de Drive (`notas-largas.json`) y su propia colección de cache local,
+ * completamente aislado de `Note` — ninguna vista de tareas (BoardView,
+ * CalendarView, el widget nativo de Android) lee esta colección.
+ */
+export interface LongNote {
+  id: string
+  title: string
+  content: string
+  createdAt: string
+  updatedAt: string
+  pinned?: boolean
+}
+
 export interface QuickItem {
   id: string
   label: string
