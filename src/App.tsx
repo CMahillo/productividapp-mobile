@@ -23,6 +23,10 @@ import type { MergeableNote, NotesSnapshot, Tombstone } from './notesMerge'
 import {
   requestNotificationPermission, scheduleNotifications, createNotificationChannel
 } from './notifications'
+import {
+  loadCachedSnapshot, saveCachedSnapshot, loadCachedQuickItems, saveCachedQuickItems,
+  markPendingPush, clearPendingPush, hasPendingPush
+} from './localCache'
 import type { Note, QuickItem } from './types'
 import NoteList from './components/NoteList'
 
@@ -362,6 +366,9 @@ export default function App() {
 
       // 5) Sesión
       if (!isAuthenticated()) { setState('login'); return }
+      // Cache-first: pinta lo que haya en cache local de inmediato (con o sin
+      // red) y luego sincroniza con Drive en segundo plano — ver `primeFromCache`.
+      await primeFromCache()
       await loadNotes()
     }
 
@@ -374,30 +381,89 @@ export default function App() {
     }
   }, [])
 
-  // Auto-refresh: cada 2 min + al volver a la pestaña
+  // Auto-refresh: cada 2 min + al volver a la pestaña/app + al recuperar red.
+  // El evento 'online' adelanta el reintento de la cola de escritura pendiente
+  // (ver `loadNotes`) en vez de esperar al siguiente tick de 2 minutos.
   useEffect(() => {
     if (state !== 'ready') return
     const id = setInterval(() => loadNotes(), AUTO_SYNC_INTERVAL)
     const handleVisibility = (): void => { if (!document.hidden) loadNotes() }
+    const handleOnline = (): void => { loadNotes() }
     document.addEventListener('visibilitychange', handleVisibility)
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', handleVisibility) }
+    window.addEventListener('online', handleOnline)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('online', handleOnline)
+    }
   }, [state])
+
+  /** Pinta de inmediato lo último que haya en cache local (con o sin red) para
+   *  que la app nunca arranque en blanco ni en pantalla de error teniendo ya
+   *  algo que enseñar. `loadNotes()` se encarga después de fusionar con Drive. */
+  async function primeFromCache(): Promise<void> {
+    const [cached, cachedQuick] = await Promise.all([loadCachedSnapshot(), loadCachedQuickItems()])
+    if (!cached) return
+    const cachedNotes = notesOf(cached)
+    // Refs primero: `loadNotes()` se llama justo después y necesita partir de
+    // este estado ya en las refs, sin esperar al ciclo de render de React.
+    notesRef.current = cachedNotes
+    tombstonesRef.current = cached.deletedNoteIds
+    setNotes(cachedNotes)
+    setTombstones(cached.deletedNoteIds)
+    if (cachedQuick) setQuickItems(cachedQuick)
+    setState('ready')
+    void scheduleNotifications(cachedNotes).catch(e => console.error('[notif] schedule desde cache', e))
+  }
 
   async function loadNotes() {
     if (syncing) return
     setSyncing(true)
     try {
+      // Cola de escritura de 1 elemento: si quedó un cambio local sin subir
+      // (la última vez `pushNotesToDrive` falló, p.ej. sin red), se reintenta
+      // aquí antes de leer — esta función ya se llama en cada intervalo, al
+      // recuperar el foco y al recuperar red.
+      if (await hasPendingPush()) {
+        const flushed = await pushNotesToDrive(toSnapshot(notesRef.current, tombstonesRef.current))
+        if (flushed) {
+          const flushedNotes = notesOf(flushed)
+          notesRef.current = flushedNotes
+          tombstonesRef.current = flushed.deletedNoteIds
+          setNotes(flushedNotes)
+          setTombstones(flushed.deletedNoteIds)
+          void saveCachedSnapshot(flushed)
+          await clearPendingPush()
+        }
+        // Si sigue fallando, la marca de pendiente queda y se reintenta en la
+        // próxima llamada a loadNotes() sin perder el cambio local.
+      }
+
       const [data, qItems] = await Promise.all([readNotes(), readQuickItems()])
-      if (data === null) { setState('drive-error'); return }
+      if (data === null) {
+        // Sin red o error de Drive: si ya hay algo que mostrar (cache o lo que
+        // hubiera en memoria), se mantiene en vez de tapar la app con un error.
+        if (notesRef.current.length > 0 || tombstonesRef.current.length > 0) {
+          console.warn('[drive] lectura fallida; se mantienen las notas en cache')
+          return
+        }
+        setState('drive-error')
+        return
+      }
       // Fusionar en vez de reemplazar: lo que haya en memoria puede ser más
       // reciente que Drive (p.ej. una escritura que falló por red), y el merge
       // decide nota a nota por `updatedAt` en vez de dejar ganar a Drive siempre.
       const merged = mergeNotes(toSnapshot(notesRef.current, tombstonesRef.current), data)
       const mergedNotes = notesOf(merged)
+      const mergedQuick = qItems ?? []
+      notesRef.current = mergedNotes
+      tombstonesRef.current = merged.deletedNoteIds
       setNotes(mergedNotes)
       setTombstones(merged.deletedNoteIds)
-      setQuickItems(qItems ?? [])
+      setQuickItems(mergedQuick)
       setState('ready')
+      void saveCachedSnapshot(merged)
+      void saveCachedQuickItems(mergedQuick)
       // Se programa siempre, sin condicionarlo al permiso: el plugin ignora
       // los avisos sin permiso sin romper nada, y así basta con conceder el
       // permiso desde ajustes para que la siguiente sincronización los active.
@@ -406,6 +472,10 @@ export default function App() {
       console.error('[drive]', e)
       // Si el token murió de verdad, auth.logout() ya limpió la sesión: en ese
       // caso volvemos al login en vez de dejar una pantalla de error de Drive.
+      if (isAuthenticated() && (notesRef.current.length > 0 || tombstonesRef.current.length > 0)) {
+        console.warn('[drive] excepcion de red; se mantienen las notas en cache')
+        return
+      }
       setState(isAuthenticated() ? 'drive-error' : 'login')
     } finally {
       setSyncing(false)
@@ -433,17 +503,32 @@ export default function App() {
       ...previous.filter(note => !currentIds.has(note.id)).map(note => ({ id: note.id, deletedAt: now }))
     ]
 
+    notesRef.current = stamped
+    tombstonesRef.current = tombs
     setNotes(stamped)
     setTombstones(tombs)
     void scheduleNotifications(stamped)
+    // Cache optimista inmediata: el cambio no se pierde aunque falle la subida
+    // de abajo o se cierre la app antes de que termine.
+    void saveCachedSnapshot(toSnapshot(stamped, tombs))
 
     // Escritura no ciega: lee Drive, fusiona y escribe si nadie se ha adelantado.
     const merged = await pushNotesToDrive(toSnapshot(stamped, tombs))
-    if (!merged) return
+    if (!merged) {
+      // Sin red o fallo de Drive: no se pierde el cambio (ya está en cache),
+      // se marca pendiente y `loadNotes()` lo reintentará (intervalo, foco o
+      // evento 'online') sin que el usuario tenga que hacer nada.
+      await markPendingPush()
+      return
+    }
+    await clearPendingPush()
     const mergedNotes = notesOf(merged)
+    notesRef.current = mergedNotes
+    tombstonesRef.current = merged.deletedNoteIds
     setNotes(mergedNotes)
     setTombstones(merged.deletedNoteIds)
     void scheduleNotifications(mergedNotes)
+    void saveCachedSnapshot(merged)
   }
 
   if (state === 'loading') return (
