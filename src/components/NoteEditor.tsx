@@ -17,6 +17,7 @@ interface Props {
 }
 
 export default function NoteEditor({ note, labels, defaultLabel, defaultDueDate, onSave, onClose }: Props) {
+  const [title, setTitle] = useState(note?.title ?? '')
   const [color, setColor] = useState(note?.color ?? '#fef9c3')
   const [dueDate, setDueDate] = useState<string | undefined>(note?.dueDate ?? defaultDueDate)
   const [label, setLabel] = useState<string | undefined>(note?.label ?? defaultLabel)
@@ -91,11 +92,12 @@ export default function NoteEditor({ note, labels, defaultLabel, defaultDueDate,
 
   const handleSave = () => {
     const content = (editorRef.current?.innerHTML ?? '').replace(/&amp;nbsp;/g, ' ').replace(/&nbsp;/g, ' ')
-    if (!content.trim() && !note) { onClose(); return }
+    const trimmedTitle = title.trim() || undefined
+    if (!content.trim() && !trimmedTitle && !note) { onClose(); return }
     const now = new Date().toISOString()
     const saved: Note = note
-      ? { ...note, content, color, dueDate, label, updatedAt: now }
-      : { id: crypto.randomUUID(), content, x: 100, y: 100, width: 220, height: 190, color, dueDate, label, createdAt: now, updatedAt: now, fontSize: 13 }
+      ? { ...note, title: trimmedTitle, content, color, dueDate, label, updatedAt: now }
+      : { id: crypto.randomUUID(), title: trimmedTitle, content, x: 100, y: 100, width: 220, height: 190, color, dueDate, label, createdAt: now, updatedAt: now, fontSize: 13 }
     onSave(saved)
   }
 
@@ -108,6 +110,15 @@ export default function NoteEditor({ note, labels, defaultLabel, defaultDueDate,
             <span className="editor-title">{note ? 'Editar nota' : 'Nueva nota'}</span>
             <button className="icon-btn" onClick={onClose}>✕</button>
           </div>
+
+          {/* Title */}
+          <input
+            className="editor-title-input"
+            type="text"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Título (opcional)"
+          />
 
           {/* Formatting toolbar */}
           <div className="fmt-toolbar">

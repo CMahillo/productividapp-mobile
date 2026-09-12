@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Note } from '../types'
 import { isMicrosoftAuthenticated } from '../microsoftAuth'
 import { createMicrosoftCalendarEvent } from '../microsoftCalendar'
+import { noteTitle, stripHtml } from '../lib/noteTitle'
 
 interface Props {
   note: Note
@@ -16,15 +17,6 @@ function formatDate(iso: string): string {
   const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0
   const date = d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
   return hasTime ? `${date}, ${d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : date
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
-    .trim()
 }
 
 function toLocalISO(d: Date): string {
@@ -92,7 +84,7 @@ export default function NoteDetail({ note, onEdit, onDelete, onToggle, onClose }
     setOutlookError(null)
 
     const plain = stripHtml(note.content)
-    const title = plain.split('\n').find(l => l.trim()) ?? 'Nota'
+    const title = noteTitle(note)
     const { start, end } = buildEventDates(note)
 
     const result = await createMicrosoftCalendarEvent(title.substring(0, 60), plain, start, end)
@@ -120,6 +112,8 @@ export default function NoteDetail({ note, onEdit, onDelete, onToggle, onClose }
             </button>
           </div>
         </div>
+
+        {note.title?.trim() && <p className="detail-title">{note.title}</p>}
 
         <div
           className="detail-body"

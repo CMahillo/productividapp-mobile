@@ -229,6 +229,22 @@ body {
 
 .editor-title { font-size: 16px; font-weight: 600; }
 
+.editor-title-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 10px;
+  outline: none;
+  margin-top: 10px;
+}
+.editor-title-input:focus { border-color: var(--accent); }
+.editor-title-input::placeholder { color: var(--text2); font-weight: 400; }
+
 .editor-textarea {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -394,6 +410,14 @@ body {
   align-items: center;
   justify-content: space-between;
   padding-top: 4px;
+}
+
+.detail-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 4px 0 2px;
+  word-break: break-word;
 }
 
 .detail-body {
