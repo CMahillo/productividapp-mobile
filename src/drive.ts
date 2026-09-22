@@ -33,8 +33,21 @@ async function createFolder(): Promise<string | null> {
   return data.id
 }
 
+// Single-flight: `readNotes`/`readLongNotes`/`readQuickItems` se lanzan en
+// paralelo (Promise.all) y cada uno llamaba a `getOrCreateFolder` por su
+// cuenta. Sin esta caché, si la carpeta aún no existía, los tres podían
+// decidir "no existe" a la vez y crear cada uno la suya — Drive permite
+// carpetas con nombres duplicados, así que el resultado eran varias
+// "ProductividApp (n)".
+let folderIdPromise: Promise<string | null> | null = null
+
 async function getOrCreateFolder(): Promise<string | null> {
-  return (await findFolderId()) ?? createFolder()
+  if (folderIdPromise) return folderIdPromise
+
+  folderIdPromise = (async () => (await findFolderId()) ?? createFolder())()
+  const id = await folderIdPromise
+  if (!id) folderIdPromise = null
+  return id
 }
 
 async function findFile(
